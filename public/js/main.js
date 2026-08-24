@@ -561,6 +561,8 @@ function launchGame(youData) {
   showPage('battle');
   $('battle-loading').classList.remove('hidden');
   if (state.game) { state.game.dispose(); state.game = null; }
+  // 必须同步创建：开局后服务器还会推一次房间状态，若此时 Game 未创建，
+  // 房间事件会把页面翻回房间页，战斗就"看不见"了
   try {
     state.game = new Game({
       socket: state.socket,
@@ -576,6 +578,15 @@ function launchGame(youData) {
     exitBattle();
   }
   state.pendingBattle = null;
+  // 后台刷新账号信息（GM 授权等），不阻塞开局；GM 能力变化时热更新
+  api('/me').then((d) => {
+    state.user = d.user;
+    if (state.game && !state.game.disposed) {
+      state.game.isAdmin = d.user.role === 'admin' || !!d.user.gm;
+      const panel = document.querySelector('#gm-panel');
+      if (panel) panel.classList.toggle('hidden', !state.game.isAdmin);
+    }
+  }).catch(() => {});
 }
 
 function exitBattle() {

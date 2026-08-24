@@ -1539,6 +1539,16 @@ export class RoomManager {
 
   onlineCount() { return this.io.engine.clientsCount; }
 
+  // 当前在线的用户 ID 集合（一个账号可能多端登录，去重）
+  onlineUserIds() {
+    const ids = new Set();
+    for (const s of this.io.sockets.sockets.values()) {
+      const u = s.data && s.data.user;
+      if (u && u.id != null) ids.add(u.id);
+    }
+    return ids;
+  }
+
   broadcastLobby() {
     try {
       this.io.to('lobby').emit('lobby', { rooms: this.list(), online: this.onlineCount() });

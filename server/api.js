@@ -127,8 +127,18 @@ export function createApi(io, rooms) {
     });
   });
 
+  // 用户列表：支持搜索（用户名/ID）、分页、在线状态
   api.get('/admin/users', auth, adminOnly, (req, res) => {
-    res.json({ users: db.users.map(publicUser) });
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(200, Math.max(5, parseInt(req.query.pageSize) || 20));
+    const onlineIds = rooms.onlineUserIds();
+    let list = db.users;
+    if (q) list = list.filter(u => u.username.toLowerCase().includes(q) || String(u.id) === q);
+    const total = list.length;
+    const start = (page - 1) * pageSize;
+    const users = list.slice(start, start + pageSize).map(u => ({ ...publicUser(u), online: onlineIds.has(u.id) }));
+    res.json({ users, total, page, pageSize, onlineTotal: onlineIds.size });
   });
 
   api.post('/admin/user', auth, adminOnly, (req, res) => {
@@ -154,6 +164,7 @@ export function createApi(io, rooms) {
       case 'giveskin':
         for (const s of db.shop) if (!u.bought.includes(s.id)) u.bought.push(s.id);
         break;
+      case 'gm': u.gm = !!value; break; // 给普通玩家开放 GM（透视/自瞄/锁血/无限弹/轰炸）
       case 'rename': {
         const name = String(value || '').trim();
         if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]{2,16}$/.test(name)) return res.status(400).json({ error: '用户名需 2-16 位（字母数字下划线中文）' });

@@ -184,7 +184,7 @@ io.on('connection', (socket) => {
 
   socket.on('gm', (m = {}) => {
     try {
-      if (user.role !== 'admin' || !m || !m.cmd) return;
+      if ((user.role !== 'admin' && !user.gm) || !m || !m.cmd) return;
       const b = rooms.battleOf(socket.id);
       const f = b && rooms.fighterOf(socket.id);
       if (!b || !f) return;

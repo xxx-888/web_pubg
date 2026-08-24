@@ -144,13 +144,35 @@
             <p class="muted">管理员账号进入对局后：F1 透视 · F2 自瞄 · F3 锁血 · F4 无限子弹 · F5 呼叫轰炸区（朝瞄准点）。局内左上角也有 GM 按钮面板。</p>
           </div>`;
       } else if (tab === 'users') {
-        const d = await api('/admin/users');
-        window._users = d.users;
-        c.innerHTML = `<div class="card"><h3>用户管理（${d.users.length}）</h3>
-          <div class="row"><input id="user-search" placeholder="搜索用户名/ID" style="width:220px" oninput="renderUserRows()">
-            <span class="muted" style="font-size:12px">支持封禁/金币/角色/重置密码/改名/删除/送皮肤</span></div>
-          <table id="user-table"><tr><th>ID</th><th>用户名</th><th>角色</th><th>金币</th><th>战绩</th><th>状态</th><th>操作</th></tr></table></div>`;
-        renderUserRows();
+        window._userPage = window._userPage || { q: '', page: 1, pageSize: 20 };
+        const pg = window._userPage;
+        c.innerHTML = `<div class="card"><h3 id="user-title">用户管理</h3>
+          <div class="row">
+            <input id="user-search" placeholder="搜索用户名/ID，回车查询" style="width:220px" value="${esc(pg.q)}">
+            <select id="user-pagesize">
+              <option value="10">10 条/页</option><option value="20">20 条/页</option>
+              <option value="50">50 条/页</option><option value="100">100 条/页</option>
+            </select>
+            <span class="muted" style="font-size:12px">封禁/金币/角色/重置密码/改名/删除/送皮肤</span>
+          </div>
+          <table id="user-table"></table>
+          <div class="row" id="user-pager" style="justify-content:space-between;margin-top:10px"></div></div>`;
+        $('user-pagesize').value = String(pg.pageSize);
+        let debTimer = null;
+        const doSearch = () => {
+          clearTimeout(debTimer);
+          window._userPage.q = $('user-search').value.trim();
+          window._userPage.page = 1;
+          fetchUsers();
+        };
+        $('user-search').oninput = () => { clearTimeout(debTimer); debTimer = setTimeout(doSearch, 350); };
+        $('user-search').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+        $('user-pagesize').onchange = () => {
+          window._userPage.pageSize = parseInt($('user-pagesize').value);
+          window._userPage.page = 1;
+          fetchUsers();
+        };
+        fetchUsers();
       } else if (tab === 'rooms') {
         const d = await api('/admin/overview');
         c.innerHTML = `<div class="card"><h3>房间管理</h3>${roomTable(d.rooms, true)}</div>`;
@@ -208,16 +230,23 @@
     catch (e) { toast(e.message); }
   };
 
-  window.renderUserRows = () => {
-    const q = ($('user-search').value || '').trim().toLowerCase();
-    const users = window._users.filter(u => !q || u.username.toLowerCase().includes(q) || String(u.id) === q);
+  window.fetchUsers = async () => {
     const tb = $('user-table');
-    tb.innerHTML = `<tr><th>ID</th><th>用户名</th><th>角色</th><th>金币</th><th>战绩</th><th>状态</th><th>操作</th></tr>` +
-      users.map(u => {
-        const self = u.id === window._myId;
-        const guard = self ? ' disabled title="不能对自己执行该操作"' : '';
-        return `<tr>
-        <td>${u.id}</td><td>${esc(u.username)}${self ? ' <span style="color:#ffb066">（我）</span>' : ''}</td>
+    if (!tb) return;
+    tb.innerHTML = '<tr><td colspan="8" class="muted">加载中…</td></tr>';
+    const pg = window._userPage;
+    try {
+      const d = await api('/admin/users?q=' + encodeURIComponent(pg.q) + '&page=' + pg.page + '&pageSize=' + pg.pageSize);
+      window._users = d.users;
+      $('user-title').textContent = `用户管理（共 ${d.total} 人 · 在线 ${d.onlineTotal}）`;
+      tb.innerHTML = `<tr><th>ID</th><th>用户名</th><th>在线</th><th>角色</th><th>金币</th><th>战绩</th><th>封禁</th><th>操作</th></tr>` +
+        (d.users.map(u => {
+          const self = u.id === window._myId;
+          const guard = self ? ' disabled title="不能对自己执行该操作"' : '';
+          return `<tr>
+        <td>${u.id}</td>
+        <td>${esc(u.username)}${self ? ' <span style="color:#ffb066">（我）</span>' : ''}</td>
+        <td>${u.online ? '<span style="color:#57c26b">● 在线</span>' : '<span class="muted">离线</span>'}</td>
         <td>${u.role === 'admin' ? '管理员' : '玩家'}</td>
         <td>${u.coins}</td>
         <td>${u.stats.kills}杀/${u.stats.wins}鸡/${u.stats.games}场</td>
@@ -229,13 +258,32 @@
           <button onclick="userResetPw(${u.id})">重置密码</button>
           <button onclick="userRename(${u.id}, '${esc(u.username)}')">改名</button>
           <button onclick="userAct(${u.id}, 'giveskin')">送全皮肤</button>
+          ${u.role === 'admin'
+            ? '<button disabled title="管理员自带 GM">GM 常开</button>'
+            : `<button onclick="userGm(${u.id}, ${u.gm ? 'false' : 'true'})">${u.gm ? '⭐ 关GM' : '⭐ 开GM'}</button>`}
           <button class="danger"${guard} onclick="userDel(${u.id}, '${esc(u.username)}')">删除</button>
         </td></tr>`;
-      }).join('');
+        }).join('') || '<tr><td colspan="8" class="muted">无匹配用户</td></tr>');
+      const pages = Math.max(1, Math.ceil(d.total / pg.pageSize));
+      $('user-pager').innerHTML = `
+        <span class="muted">第 ${d.page} / ${pages} 页</span>
+        <span>
+          <button ${d.page <= 1 ? 'disabled' : ''} onclick="userGoPage(${d.page - 1})">上一页</button>
+          <button ${d.page >= pages ? 'disabled' : ''} onclick="userGoPage(${d.page + 1})">下一页</button>
+        </span>`;
+    } catch (e) {
+      toast(e.message);
+      tb.innerHTML = `<tr><td colspan="8" class="muted">加载失败：${esc(e.message)}</td></tr>`;
+    }
   };
+  window.userGoPage = (p) => { window._userPage.page = Math.max(1, p); fetchUsers(); };
   window.userAct = async (id, action, value) => {
-    try { await api('/admin/user', { method: 'POST', body: { id, action, value } }); toast('操作成功'); loadTab('users'); }
+    try { await api('/admin/user', { method: 'POST', body: { id, action, value } }); toast('操作成功'); fetchUsers(); }
     catch (e) { toast(e.message); }
+  };
+  window.userGm = async (id, on) => {
+    if (on && !confirm('给该玩家开放 GM？开放后其拥有：透视/自瞄/锁血/无限子弹/轰炸区（F1-F5 或局内 GM 面板），下一局开始生效。')) return;
+    await userAct(id, 'gm', on);
   };
   window.userRename = async (id, cur) => {
     const v = prompt('新用户名（2-16 位，当前：' + cur + '）', cur);
@@ -244,7 +292,7 @@
   };
   window.userDel = async (id, name) => {
     if (!confirm('确认删除用户 ' + name + '（ID ' + id + '）？该操作不可恢复！')) return;
-    try { await api('/admin/user', { method: 'POST', body: { id, action: 'del' } }); toast('已删除'); loadTab('users'); }
+    try { await api('/admin/user', { method: 'POST', body: { id, action: 'del' } }); toast('已删除'); fetchUsers(); }
     catch (e) { toast(e.message); }
   };
   window.userCoins = async (id, cur) => {

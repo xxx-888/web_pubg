@@ -110,7 +110,7 @@ export class Game {
     this.battle = opts.battle;
     this.onExit = opts.onExit;
     this.disposed = false;
-    this.isAdmin = opts.user.role === 'admin';
+    this.isAdmin = opts.user.role === 'admin' || !!opts.user.gm; // GM 能力：管理员或被授权玩家
 
     this.isTouch = window.matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 900;
 
