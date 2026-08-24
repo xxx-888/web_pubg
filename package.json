@@ -2,7 +2,7 @@
   "name": "firezone",
   "version": "1.0.0",
   "private": true,
-  "description": "FIREZONE 烽区 — 网页端吃鸡，静态资源一次加载，服务器只做校验与管理",
+  "description": "FIREZONE 烽区 — 纯网页 3D 大逃杀：Three.js 客户端 + Socket.io 权威服务端，局域网联机、组队、载具、商店与后台管理一体",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
