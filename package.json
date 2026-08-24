@@ -1,0 +1,21 @@
+{
+  "name": "firezone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FIREZONE 烽区 — 网页端吃鸡，静态资源一次加载，服务器只做校验与管理",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.8.1",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}

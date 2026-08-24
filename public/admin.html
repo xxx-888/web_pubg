@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIREZONE 后台管理</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", sans-serif; background: #10141c; color: #dde3ee; font-size: 14px; padding: 20px; }
+    h1 { font-size: 22px; margin-bottom: 16px; color: #ff8c2e; }
+    .card { background: #1c2331; border: 1px solid #2a3346; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+    input, select { background: #10141c; border: 1px solid #2a3346; border-radius: 6px; color: #dde3ee; padding: 8px 10px; font-size: 14px; }
+    button { background: #171d29; border: 1px solid #2a3346; color: #dde3ee; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    button:hover { border-color: #ff8c2e; }
+    button.primary { background: #ff8c2e; border-color: #ff8c2e; color: #1a1006; font-weight: bold; }
+    button.danger { border-color: #e05252; color: #ff8f8f; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #2a3346; text-align: left; font-size: 13px; }
+    th { color: #8b95a8; font-weight: normal; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tabs button { padding: 8px 18px; }
+    .tabs button.active { border-color: #ff8c2e; color: #ff8c2e; }
+    .stat-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .stat { background: #171d29; border-radius: 8px; padding: 14px 22px; text-align: center; }
+    .stat b { font-size: 24px; color: #ffb066; display: block; }
+    .stat span { color: #8b95a8; font-size: 12px; }
+    #login-box { max-width: 360px; margin: 10vh auto; }
+    #login-box input { width: 100%; margin-bottom: 10px; }
+    .muted { color: #8b95a8; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 10; }
+    .modal { background: #1c2331; border: 1px solid #2a3346; border-radius: 10px; padding: 20px; width: min(92vw, 460px); max-height: 86vh; overflow: auto; }
+    .modal h3 { margin-bottom: 12px; }
+    .modal .row input, .modal .row select { flex: 1; }
+    #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 99; }
+    .toastItem { background: #1c2331; border: 1px solid #ff8c2e; padding: 8px 20px; border-radius: 6px; margin-top: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="toast"></div>
+
+  <div id="login-box" class="card">
+    <h1>FIREZONE 后台登录</h1>
+    <p class="muted" style="margin-bottom:12px">仅管理员账号可进入（默认 admin / admin123）</p>
+    <input id="username" placeholder="管理员用户名">
+    <input id="password" type="password" placeholder="密码">
+    <button class="primary" id="btn-login" style="width:100%;padding:10px">登录后台</button>
+    <p id="login-err" style="color:#e05252;margin-top:8px;font-size:13px"></p>
+  </div>
+
+  <div id="panel" class="hidden">
+    <h1>FIREZONE 烽区 · 后台管理</h1>
+    <div class="tabs" id="tabs">
+      <button data-t="overview" class="active">概览</button>
+      <button data-t="users">用户</button>
+      <button data-t="rooms">房间</button>
+      <button data-t="weapons">武器</button>
+      <button data-t="vehicles">载具</button>
+      <button data-t="maps">地图</button>
+      <button data-t="shop">商店</button>
+      <button data-t="settings">设置</button>
+    </div>
+    <div id="content"></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let token = localStorage.getItem('fz_admin_token') || '';
+  let currentTab = 'overview';
+
+  function toast(msg) {
+    const el = document.createElement('div');
+    el.className = 'toastItem';
+    el.textContent = msg;
+    $('toast').appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch('/api' + path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...(opts.headers || {}) },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '请求失败');
+    return data;
+  }
+
+  $('btn-login').onclick = async () => {
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: $('username').value, password: $('password').value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (data.user.role !== 'admin') throw new Error('该账号不是管理员');
+      token = data.token;
+      window._myId = data.user.id;
+      localStorage.setItem('fz_admin_token', token);
+      enter();
+    } catch (e) { $('login-err').textContent = e.message; }
+  };
+
+  function enter() {
+    $('login-box').classList.add('hidden');
+    $('panel').classList.remove('hidden');
+    loadTab('overview');
+  }
+
+  $('tabs').onclick = (e) => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    loadTab(e.target.dataset.t);
+  };
+
+  async function loadTab(tab) {
+    currentTab = tab;
+    const c = $('content');
+    try {
+      if (tab === 'overview') {
+        const d = await api('/admin/overview');
+        const upH = Math.floor(d.uptime / 3600), upM = Math.floor(d.uptime % 3600 / 60);
+        c.innerHTML = `
+          <div class="card"><div class="stat-row">
+            <div class="stat"><b>${d.users}</b><span>注册用户</span></div>
+            <div class="stat"><b>${d.online}</b><span>在线连接</span></div>
+            <div class="stat"><b>${d.rooms.length}</b><span>房间数</span></div>
+            <div class="stat"><b>${d.battles}</b><span>战斗中</span></div>
+            <div class="stat"><b>${d.weapons}</b><span>武器种类</span></div>
+            <div class="stat"><b>${upH}时${upM}分</b><span>运行时长</span></div>
+            <div class="stat"><b>${d.memMB} MB</b><span>内存占用</span></div>
+          </div></div>
+          <div class="card"><h3>全服公告</h3>
+            <div class="row"><input id="ann-text" placeholder="输入公告内容（120 字内），全员弹窗 + 大厅聊天" style="flex:1">
+              <button class="primary" onclick="sendAnnounce()">📢 发送公告</button></div></div>
+          <div class="card"><h3>活跃房间</h3>${roomTable(d.rooms, false)}</div>
+          <div class="card"><h3>GM 说明</h3>
+            <p class="muted">管理员账号进入对局后：F1 透视 · F2 自瞄 · F3 锁血 · F4 无限子弹 · F5 呼叫轰炸区（朝瞄准点）。局内左上角也有 GM 按钮面板。</p>
+          </div>`;
+      } else if (tab === 'users') {
+        const d = await api('/admin/users');
+        window._users = d.users;
+        c.innerHTML = `<div class="card"><h3>用户管理（${d.users.length}）</h3>
+          <div class="row"><input id="user-search" placeholder="搜索用户名/ID" style="width:220px" oninput="renderUserRows()">
+            <span class="muted" style="font-size:12px">支持封禁/金币/角色/重置密码/改名/删除/送皮肤</span></div>
+          <table id="user-table"><tr><th>ID</th><th>用户名</th><th>角色</th><th>金币</th><th>战绩</th><th>状态</th><th>操作</th></tr></table></div>`;
+        renderUserRows();
+      } else if (tab === 'rooms') {
+        const d = await api('/admin/overview');
+        c.innerHTML = `<div class="card"><h3>房间管理</h3>${roomTable(d.rooms, true)}</div>`;
+      } else if (tab === 'settings') {
+        const d = await api('/admin/settings');
+        const s = d.settings;
+        c.innerHTML = `<div class="card"><h3>全局设置</h3>
+          <div class="row"><span class="muted">每局总人数(2-100)：</span><input id="set-total" type="number" value="${s.totalPlayers}" style="width:90px"></div>
+          <div class="row"><span class="muted">机器人命中系数(0.1-0.95)：</span><input id="set-acc" type="number" step="0.05" value="${s.botAcc}" style="width:90px"></div>
+          <div class="row"><span class="muted">击杀奖励：</span><input id="set-kill" type="number" value="${s.rewards.kill}" style="width:80px">
+            <span class="muted">吃鸡奖励：</span><input id="set-win" type="number" value="${s.rewards.win}" style="width:80px"></div>
+          <div class="row"><button class="primary" onclick="saveSettings()">保存设置</button></div>
+          <p class="muted">提示：每局总人数含机器人补位，人数越多越吃服务器性能，手机联机建议 ≤ 60。</p></div>`;
+      } else {
+        // 武器/载具/地图/商店 通用 CRUD
+        const d = await api('/admin/cfg/' + tab);
+        const items = d.items;
+        c.innerHTML = `<div class="card"><h3>${tabName(tab)}配置</h3>
+          <table><tr>${Object.keys(items[0] || {}).map(k => `<th>${k}</th>`).join('')}<th>操作</th></tr>
+          ${items.map((it, i) => `<tr>${Object.keys(items[0]).map(k => `<td>${fmt(it[k])}</td>`).join('')}
+            <td><button onclick="editItem('${tab}', ${i})">编辑</button>
+            ${items.length > 1 ? `<button class="danger" onclick="delItem('${tab}', '${it.id}')">删除</button>` : ''}</td></tr>`).join('')}
+          </table><div class="row" style="margin-top:10px"><button class="primary" onclick="editItem('${tab}', -1)">+ 新增</button>
+          <span class="muted">修改武器数值后，新开的对局生效。</span></div></div>`;
+        window._cfgItems = items;
+      }
+    } catch (e) {
+      c.innerHTML = `<div class="card">加载失败：${esc(e.message)} <button onclick="loadTab('${tab}')">重试</button></div>`;
+    }
+  }
+
+  function roomTable(rooms, withOps) {
+    if (!rooms.length) return '<p class="muted">暂无房间</p>';
+    return `<table><tr><th>房间</th><th>模式</th><th>状态</th><th>人数</th><th>成员</th>${withOps ? '<th>操作</th>' : ''}</tr>
+      ${rooms.map(r => `<tr><td>${esc(r.name)} (${r.id})</td>
+        <td>${{ solo: '单人', duo: '双人', squad: '四人' }[r.mode] || r.mode}</td>
+        <td>${r.state === 'battle' ? '<span style="color:#ffb066">战斗中</span>' : r.state === 'waiting' ? '等待中' : r.state}</td>
+        <td>${r.players}/${r.max}</td>
+        <td style="max-width:340px">${(r.members || []).map(m =>
+          `${esc(m.name)}${m.ready ? '✓' : ''}`).join('、') || '<span class="muted">空</span>'}</td>
+        ${withOps ? `<td>
+          ${(r.members || []).map(m => `<button onclick="kickUser('${r.id}', ${m.id}, '${esc(m.name)}')">踢出 ${esc(m.name)}</button>`).join(' ')}
+          <button class="danger" onclick="dissolveRoom('${r.id}', ${r.players})">解散房间</button>
+        </td>` : ''}</tr>`).join('')}</table>`;
+  }
+
+  window.kickUser = async (roomId, userId, name) => {
+    if (!confirm('将 ' + name + ' 移出房间？')) return;
+    try { await api('/admin/kick', { method: 'POST', body: { roomId, userId } }); toast('已移出 ' + name); loadTab('rooms'); }
+    catch (e) { toast(e.message); }
+  };
+  window.dissolveRoom = async (roomId, n) => {
+    if (!confirm(`解散房间 ${roomId}（${n} 人）？战斗中的对局会被强制结束并结算。`)) return;
+    try { await api('/admin/room/dissolve', { method: 'POST', body: { id: roomId } }); toast('房间已解散'); loadTab('rooms'); }
+    catch (e) { toast(e.message); }
+  };
+
+  window.renderUserRows = () => {
+    const q = ($('user-search').value || '').trim().toLowerCase();
+    const users = window._users.filter(u => !q || u.username.toLowerCase().includes(q) || String(u.id) === q);
+    const tb = $('user-table');
+    tb.innerHTML = `<tr><th>ID</th><th>用户名</th><th>角色</th><th>金币</th><th>战绩</th><th>状态</th><th>操作</th></tr>` +
+      users.map(u => {
+        const self = u.id === window._myId;
+        const guard = self ? ' disabled title="不能对自己执行该操作"' : '';
+        return `<tr>
+        <td>${u.id}</td><td>${esc(u.username)}${self ? ' <span style="color:#ffb066">（我）</span>' : ''}</td>
+        <td>${u.role === 'admin' ? '管理员' : '玩家'}</td>
+        <td>${u.coins}</td>
+        <td>${u.stats.kills}杀/${u.stats.wins}鸡/${u.stats.games}场</td>
+        <td>${u.banned ? '<span style="color:#e05252">已封禁</span>' : '正常'}</td>
+        <td>
+          <button${guard} onclick="userAct(${u.id}, '${u.banned ? 'unban' : 'ban'}')">${u.banned ? '解封' : '封禁'}</button>
+          <button onclick="userCoins(${u.id}, ${u.coins})">金币</button>
+          <button${guard} onclick="userRole(${u.id}, '${u.role}')">角色</button>
+          <button onclick="userResetPw(${u.id})">重置密码</button>
+          <button onclick="userRename(${u.id}, '${esc(u.username)}')">改名</button>
+          <button onclick="userAct(${u.id}, 'giveskin')">送全皮肤</button>
+          <button class="danger"${guard} onclick="userDel(${u.id}, '${esc(u.username)}')">删除</button>
+        </td></tr>`;
+      }).join('');
+  };
+  window.userAct = async (id, action, value) => {
+    try { await api('/admin/user', { method: 'POST', body: { id, action, value } }); toast('操作成功'); loadTab('users'); }
+    catch (e) { toast(e.message); }
+  };
+  window.userRename = async (id, cur) => {
+    const v = prompt('新用户名（2-16 位，当前：' + cur + '）', cur);
+    if (v === null || v === cur) return;
+    await userAct(id, 'rename', v);
+  };
+  window.userDel = async (id, name) => {
+    if (!confirm('确认删除用户 ' + name + '（ID ' + id + '）？该操作不可恢复！')) return;
+    try { await api('/admin/user', { method: 'POST', body: { id, action: 'del' } }); toast('已删除'); loadTab('users'); }
+    catch (e) { toast(e.message); }
+  };
+  window.userCoins = async (id, cur) => {
+    const v = prompt('设置金币数（当前 ' + cur + '）', cur);
+    if (v === null) return;
+    await userAct(id, 'coins', v);
+  };
+  window.userRole = async (id, cur) => {
+    const v = prompt('角色：输入 admin 或 user（当前 ' + cur + '）', cur);
+    if (v === null) return;
+    await userAct(id, 'role', v);
+  };
+  window.userResetPw = async (id) => {
+    const v = prompt('新密码（至少4位）');
+    if (!v) return;
+    try { await api('/admin/user', { method: 'POST', body: { id, action: 'resetpw', value: v } }); toast('密码已重置'); }
+    catch (e) { toast(e.message); }
+  };
+  window.sendAnnounce = async () => {
+    const text = $('ann-text').value.trim();
+    if (!text) { toast('公告内容不能为空'); return; }
+    try { await api('/admin/announce', { method: 'POST', body: { text } }); toast('公告已发送'); $('ann-text').value = ''; }
+    catch (e) { toast(e.message); }
+  };
+  window.saveSettings = async () => {
+    try {
+      await api('/admin/settings', { method: 'POST', body: { settings: {
+        totalPlayers: parseInt($('set-total').value),
+        botAcc: parseFloat($('set-acc').value),
+        rewards: { kill: parseInt($('set-kill').value), win: parseInt($('set-win').value) },
+      } } });
+      toast('设置已保存');
+    } catch (e) { toast(e.message); }
+  };
+  window.editItem = async (kind, idx) => {
+    const items = window._cfgItems;
+    const item = idx >= 0 ? { ...items[idx] } : newItem(kind);
+    const fields = Object.keys(item).filter(f => !(kind === 'shop' && f === 'parts'));
+    const bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    const partsEditor = kind === 'shop' ? (() => {
+      const p = item.parts || {};
+      const nm = { torso: '上衣', arms: '手臂', legs: '裤腿', pack: '背包' };
+      return `<div class="row"><span class="muted" style="width:90px">整套配色</span>
+        ${['torso', 'arms', 'legs', 'pack'].map(k =>
+          `<label style="font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span class="muted">${nm[k]}</span><input type="color" data-part="${k}" value="${p[k] || '#7a8a5a'}" style="width:44px;height:30px;padding:0;border:none;background:none;cursor:pointer"></label>`).join('')}
+      </div>`;
+    })() : '';
+    bg.innerHTML = `<div class="modal"><h3>${idx >= 0 ? '编辑' : '新增'}${tabName(kind)}</h3>
+      ${fields.map(f => `<div class="row"><span class="muted" style="width:90px">${f}</span>
+        ${typeof item[f] === 'boolean' ? `<select data-f="${f}"><option value="true" ${item[f]}>true</option><option value="false" ${!item[f]}>false</option></select>`
+          : `<input data-f="${f}" value='${JSON.stringify(item[f])}'>`}</div>`).join('')}
+      ${partsEditor}
+      <div class="row"><button class="primary" id="modal-save">保存</button><button id="modal-cancel">取消</button></div></div>`;
+    document.body.appendChild(bg);
+    $('modal-cancel').onclick = () => bg.remove();
+    $('modal-save').onclick = async () => {
+      bg.querySelectorAll('[data-f]').forEach(el => {
+        const f = el.dataset.f;
+        let v = el.value;
+        if (typeof item[f] === 'number') v = parseFloat(v) || 0;
+        if (typeof item[f] === 'boolean') v = v === 'true';
+        if (typeof item[f] === 'object' && item[f] !== null) { try { v = JSON.parse(v); } catch { toast(f + ' 格式错误'); } }
+        item[f] = v;
+      });
+      // 商店部件配色：颜色选择器合成 parts
+      const partEls = bg.querySelectorAll('[data-part]');
+      if (partEls.length) {
+        item.parts = item.parts || {};
+        partEls.forEach(el => { item.parts[el.dataset.part] = el.value; });
+      }
+      try {
+        await api('/admin/cfg/' + kind, { method: 'POST', body: { item } });
+        toast('已保存');
+        bg.remove();
+        loadTab(kind);
+      } catch (e) { toast(e.message); }
+    };
+  };
+  window.delItem = async (kind, id) => {
+    if (!confirm('确认删除 ' + id + '？')) return;
+    try { await api('/admin/cfg/' + kind + '/' + id, { method: 'DELETE' }); toast('已删除'); loadTab(kind); }
+    catch (e) { toast(e.message); }
+  };
+
+  function newItem(kind) {
+    if (kind === 'weapons') return { id: 'newgun', name: '新武器', type: 'ar', dmg: 30, rate: 120, mag: 30, reload: 2400, range: 300, ammo: 'heavy', spread: 0.015, color: 4210752 };
+    if (kind === 'vehicles') return { id: 'newcar', name: '新车', speed: 22, hp: 600, color: 10683390 };
+    if (kind === 'maps') return { id: 'newmap', name: '新地图', size: 800, seed: Math.floor(Math.random() * 999999) };
+    return { id: 'skin_new', name: '新外观', color: '#7a8a5a', price: 500, parts: { torso: '#7a8a5a', arms: '#6d7c50', legs: '#3f4450', pack: '#4a4336' } };
+  }
+  function tabName(t) { return { weapons: '武器', vehicles: '载具', maps: '地图', shop: '商店' }[t] || t; }
+  function fmt(v) { if (typeof v === 'object' && v !== null) return JSON.stringify(v); return String(v); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  // 启动：已有 token 直接进入
+  if (token) {
+    api('/me').then((d) => { window._myId = d.user.id; enter(); }).catch(() => { localStorage.removeItem('fz_admin_token'); token = ''; });
+  }
+</script>
+</body>
+</html>

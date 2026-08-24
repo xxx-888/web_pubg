@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>FIREZONE 烽区行动</title>
+  <link rel="stylesheet" href="/css/style.css?v=17">
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;🔥&lt;/text&gt;&lt;/svg&gt;">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- ========== 登录页 ========== -->
+  <section id="page-login" class="page center-page">
+    <div class="login-box card">
+      <h1 class="logo">FIRE<span>ZONE</span></h1>
+      <p class="subtitle">烽区行动 · 网页 3D 空降竞技</p>
+      <div class="tabs">
+        <button class="tab active" data-tab="login">登录</button>
+        <button class="tab" data-tab="register">注册</button>
+      </div>
+      <form id="login-form" class="form">
+        <input id="li-username" placeholder="用户名" autocomplete="username" maxlength="16" required="">
+        <input id="li-password" type="password" placeholder="密码" autocomplete="current-password" maxlength="32" required="">
+        <button class="btn primary" type="submit">进入烽区</button>
+        <p id="login-err" class="err"></p>
+      </form>
+      <form id="register-form" class="form hidden">
+        <input id="rg-username" placeholder="用户名（2-16位）" maxlength="16" required="">
+        <input id="rg-password" type="password" placeholder="密码（至少4位）" maxlength="32" required="">
+        <button class="btn primary" type="submit">注册并进入</button>
+        <p id="register-err" class="err"></p>
+      </form>
+      <p class="hint">测试账号：demo / 1234 &nbsp; 管理员：admin / admin123</p>
+    </div>
+  </section>
+
+  <!-- ========== 大厅 ========== -->
+  <section id="page-lobby" class="page hidden">
+    <header class="lobby-header">
+      <h1 class="logo small">FIRE<span>ZONE</span></h1>
+      <div class="header-right">
+        <span id="online-count" class="online-dot">在线 0</span>
+        <span id="lobby-coins" class="coins">💰 0</span>
+        <button id="btn-logout" class="btn ghost small">退出登录</button>
+      </div>
+    </header>
+
+    <div class="lobby-grid">
+      <!-- 左：个人信息 -->
+      <div class="card lobby-col">
+        <h3 id="lobby-username" class="card-title">玩家</h3>
+        <div id="lobby-skin-preview" class="skin-preview"></div>
+        <button id="btn-rename" class="btn primary" style="width:100%;margin-bottom:12px;padding:10px">✏️ 修改昵称</button>
+        <div class="stat-grid" id="lobby-stats">
+          <div class="stat"><b id="st-games">0</b><span>场次</span></div>
+          <div class="stat"><b id="st-kills">0</b><span>击杀</span></div>
+          <div class="stat"><b id="st-wins">0</b><span>吃鸡</span></div>
+          <div class="stat"><b id="st-kd">0</b><span>K/D</span></div>
+        </div>
+        <h3 class="card-title">排行榜 · 击杀</h3>
+        <ol id="leaderboard" class="leaderboard"></ol>
+      </div>
+
+      <!-- 中：模式与房间 -->
+      <div class="lobby-main">
+        <div class="card">
+          <h3 class="card-title">选择模式</h3>
+          <div class="mode-row" id="mode-row">
+            <button class="mode-btn active" data-mode="solo">单人<br><small>1人小队</small></button>
+            <button class="mode-btn" data-mode="duo">双人<br><small>2人小队</small></button>
+            <button class="mode-btn" data-mode="squad">四人<br><small>4人小队</small></button>
+          </div>
+          <h3 class="card-title">风景时段</h3>
+          <div class="mode-row" id="scenery-row">
+            <button class="mode-btn" data-sc="dawn">黎明</button>
+            <button class="mode-btn active" data-sc="day">白天</button>
+            <button class="mode-btn" data-sc="dusk">黄昏</button>
+            <button class="mode-btn" data-sc="night">夜晚</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-quick" class="btn primary big">快速开始</button>
+            <button id="btn-create" class="btn big">创建房间</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="card-title">房间列表 <button id="btn-refresh" class="btn ghost small">刷新</button></h3>
+          <div class="join-row">
+            <input id="join-room-id" placeholder="输入房间号（如 R1）直接加入好友房间">
+            <button id="btn-join-id" class="btn small">加入</button>
+          </div>
+          <div id="room-list" class="room-list"></div>
+        </div>
+      </div>
+
+      <!-- 右：商店 -->
+      <div class="card lobby-col">
+        <h3 class="card-title">外观商店 <span class="muted" style="font-size:12px">点击试穿 · 3D 预览</span></h3>
+        <div class="shop-preview">
+          <canvas id="skin-canvas" width="220" height="240"></canvas>
+          <div class="shop-preview-info">
+            <b id="skin-preview-name">--</b>
+            <span class="muted" style="font-size:11px">上衣 / 袖臂 / 裤腿 / 背包 整套替换</span>
+            <button id="skin-preview-btn" class="btn primary small">购买</button>
+          </div>
+        </div>
+        <div id="shop-grid" class="shop-grid"></div>
+      </div>
+    </div>
+
+    <!-- 大厅聊天 -->
+    <div class="card lobby-chat">
+      <div id="lobby-chatlog" class="chatlog"></div>
+      <div class="chat-input-row">
+        <input id="lobby-chat-input" placeholder="大厅聊天（回车发送）" maxlength="100">
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 房间等待页 ========== -->
+  <section id="page-room" class="page hidden">
+    <div class="card room-box">
+      <div class="room-head">
+        <div>
+          <h2 id="room-name">房间</h2>
+          <p id="room-meta" class="muted"></p>
+        </div>
+        <button id="btn-copy-invite" class="btn small">📋 复制邀请</button>
+      </div>
+      <div id="room-players" class="room-players"></div>
+      <div class="btn-row">
+        <button id="btn-ready" class="btn primary big">准备</button>
+        <button id="btn-room-start" class="btn big">立即开始</button>
+        <button id="btn-room-leave" class="btn danger big">离开房间</button>
+      </div>
+      <p class="hint center" id="room-hint">所有人准备后自动开始，机器人会补位</p>
+      <div class="card chatbox">
+        <div id="room-chatlog" class="chatlog"></div>
+        <div class="chat-input-row">
+          <input id="room-chat-input" placeholder="房间聊天（回车发送）" maxlength="100">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 战斗页 ========== -->
+  <section id="page-battle" class="hidden">
+    <canvas id="c3d"></canvas>
+
+    <!-- 加载遮罩 -->
+    <div id="battle-loading" class="overlay center-page hidden">
+      <div class="loader"></div>
+      <p>正在空投部署…</p>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="top-bar">
+        <div id="alive-wrap">存活 <b id="alive-count">0</b></div>
+        <div id="zone-timer"></div>
+      </div>
+      <div id="killfeed"></div>
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div id="crosshair"></div>
+      <div id="hitmark" class="hidden">✕</div>
+
+      <div id="bottom-left">
+        <div id="cast-bar" class="hidden"><div id="cast-fill"></div><span id="cast-text"></span></div>
+        <div id="hp-wrap">
+          <div id="hp-bar"><div id="hp-fill"></div></div>
+          <span id="hp-num">100</span>
+        </div>
+        <div id="meds-row">
+          <button class="med-btn" data-item="bandage">🩹<b id="cnt-bandage">0</b><small>3</small></button>
+          <button class="med-btn" data-item="medkit">🧰<b id="cnt-medkit">0</b><small>4</small></button>
+        </div>
+      </div>
+
+      <div id="bottom-right">
+        <div id="weapon-name">拳头</div>
+        <div id="ammo"><b id="ammo-mag">—</b><span id="ammo-pool"></span></div>
+        <div id="slots">
+          <div class="slot" data-slot="0"><span class="slot-key">1</span><span class="slot-name">空</span></div>
+          <div class="slot" data-slot="1"><span class="slot-key">2</span><span class="slot-name">空</span></div>
+        </div>
+      </div>
+
+      <div id="interact-tip" class="hidden"></div>
+      <div id="plane-tip" class="hidden">按 <b>空格</b> 跳伞</div>
+      <div id="chatlog-battle" class="chatlog"></div>
+      <div id="chat-input-row-battle" class="hidden">
+        <input id="chat-input-battle" placeholder="按 Tab 切换 全体/队伍，回车发送" maxlength="100">
+      </div>
+      <div id="gm-panel" class="hidden">
+        <span>GM</span>
+        <button data-cmd="esp">透视F1</button>
+        <button data-cmd="aimbot">自瞄F2</button>
+        <button data-cmd="god">锁血F3</button>
+        <button data-cmd="infammo">无限弹F4</button>
+        <button data-cmd="airstrike">轰炸F5</button>
+      </div>
+      <div id="spectate-bar" class="hidden">
+        观战中：<b id="spectate-name"></b>
+        <button id="btn-spec-next" class="btn small">切换视角</button>
+        <button id="btn-spec-back" class="btn small danger">返回大厅</button>
+      </div>
+    </div>
+
+    <!-- 触屏控制 -->
+    <div id="touch-ui" class="hidden">
+      <div id="joy-base"><div id="joy-knob"></div></div>
+      <div id="look-zone"></div>
+      <div id="touch-btns">
+        <button id="tb-fire" class="tbtn fire">🔥</button>
+        <button id="tb-ads" class="tbtn">🎯</button>
+        <button id="tb-jump" class="tbtn">🪂</button>
+        <button id="tb-crouch" class="tbtn">⬇</button>
+        <button id="tb-reload" class="tbtn">🔄</button>
+        <button id="tb-interact" class="tbtn">✋</button>
+        <button id="tb-map" class="tbtn">🗺</button>
+        <button id="tb-person" class="tbtn">👁</button>
+      </div>
+    </div>
+
+    <!-- 记分板 -->
+    <div id="scoreboard" class="overlay hidden"><div class="card sb-card"><h3>本局信息</h3><div id="sb-body"></div></div></div>
+    <!-- 大地图 -->
+    <div id="bigmap" class="overlay hidden"><canvas id="bigmap-canvas" width="640" height="640"></canvas></div>
+    <!-- 死亡结算 -->
+    <div id="death-screen" class="overlay center-page hidden">
+      <div class="card death-card">
+        <h2>你已阵亡</h2>
+        <p class="death-rank">排名 <b id="death-rank">#--</b> / <span id="death-total"></span></p>
+        <p class="muted">淘汰者：<b id="death-by"></b></p>
+        <div class="btn-row">
+          <button id="btn-spectate" class="btn primary">观战队友</button>
+          <button id="btn-death-back" class="btn">返回大厅</button>
+        </div>
+      </div>
+    </div>
+    <!-- 对局结算 -->
+    <div id="end-screen" class="overlay center-page hidden">
+      <div class="card death-card">
+        <h2 id="end-title">对局结束</h2>
+        <div class="end-grid">
+          <div><b id="end-rank">#--</b><span>排名</span></div>
+          <div><b id="end-kills">0</b><span>击杀</span></div>
+          <div><b id="end-dmg">0</b><span>伤害</span></div>
+          <div><b id="end-coins">+0</b><span>金币</span></div>
+        </div>
+        <p class="muted" id="end-winners"></p>
+        <button id="btn-end-back" class="btn primary big">返回大厅</button>
+      </div>
+    </div>
+    <!-- 暂停菜单 -->
+    <div id="pause-menu" class="overlay center-page hidden">
+      <div class="card death-card">
+        <h2>游戏菜单</h2>
+        <div class="btn-row col">
+          <button id="btn-resume" class="btn primary big">继续游戏</button>
+          <button id="btn-quit-battle" class="btn danger big">离开对局</button>
+        </div>
+        <p class="hint">电脑：WASD移动 · 鼠标射击 · V切换人称 · M地图 · Tab战绩 · Enter聊天</p>
+      </div>
+    </div>
+    <!-- 操作帮助 -->
+    <button id="btn-help" class="hud-help hidden">❓操作</button>
+    <div id="help-overlay" class="overlay center-page hidden">
+      <div class="card help-card">
+        <h2>🎮 操作说明</h2>
+        <div class="help-cols">
+          <div>
+            <h4>电脑</h4>
+            <table class="help-table">
+              <tbody><tr><td>W A S D</td><td>移动（Shift 冲刺）</td></tr>
+              <tr><td>鼠标</td><td>转视角</td></tr>
+              <tr><td>左键</td><td>射击 / 出拳</td></tr>
+              <tr><td>右键</td><td>开镜瞄准</td></tr>
+              <tr><td>E</td><td>拾取 / 上下车 / 开空投</td></tr>
+              <tr><td>R</td><td>换弹</td></tr>
+              <tr><td>1 / 2 / 滚轮</td><td>切换武器</td></tr>
+              <tr><td>3 / 4</td><td>绷带 / 医疗箱</td></tr>
+              <tr><td>空格</td><td>跳伞 / 跳跃</td></tr>
+              <tr><td>C</td><td>蹲下</td></tr>
+              <tr><td>V</td><td>切换第一/第三人称</td></tr>
+              <tr><td>M</td><td>大地图（看装备/车辆位置）</td></tr>
+              <tr><td>Tab</td><td>战绩面板</td></tr>
+              <tr><td>Enter</td><td>聊天</td></tr>
+              <tr><td>H</td><td>打开/关闭本帮助</td></tr>
+            </tbody></table>
+          </div>
+          <div>
+            <h4>手机</h4>
+            <table class="help-table">
+              <tbody><tr><td>左侧摇杆</td><td>移动</td></tr>
+              <tr><td>右侧滑动</td><td>转视角</td></tr>
+              <tr><td>🔥</td><td>射击（长按连发）</td></tr>
+              <tr><td>🎯</td><td>开镜</td></tr>
+              <tr><td>✋</td><td>拾取 / 上下车</td></tr>
+              <tr><td>🪂 / ⬇ / 🔄</td><td>跳伞跳跃 / 蹲 / 换弹</td></tr>
+              <tr><td>🗺 / 👁</td><td>地图 / 切换人称</td></tr>
+              <tr><td>左下按钮</td><td>用药（🩹绷带 🧰医疗箱）</td></tr>
+            </tbody></table>
+            <h4 style="margin-top:10px">小技巧</h4>
+            <p class="muted help-tip">· 武器/医疗有光柱，大地图看装备和车<br>· 进屋捡装备，墙能挡子弹<br>· 上车后 W/S 油门、A/D 转向、E 下车</p>
+          </div>
+        </div>
+        <button id="btn-help-close" class="btn primary big">开始游戏</button>
+      </div>
+    </div>
+    <div id="dmg-vignette"></div>
+    <div id="zone-vignette"></div>
+  </section>
+
+  <div id="toasts"></div>
+
+  <!-- 房间邀请链接弹窗 -->
+  <div id="share-modal" class="modal-overlay hidden">
+    <div class="modal card">
+      <h3 class="card-title">邀请好友</h3>
+      <p class="muted" style="font-size:12px;margin:4px 0 10px">好友在<b>同一 WiFi/局域网</b>下打开链接，注册/登录后自动进房。首选链接已自动复制。</p>
+      <div id="share-links"></div>
+      <button id="share-close" class="btn primary" style="width:100%;margin-top:12px">关闭</button>
+    </div>
+  </div>
+
+  <script type="module" src="/js/main.js?v=17"></script>
+
+</body></html>
