@@ -360,12 +360,17 @@ function copyText(text) {
   return Promise.resolve(legacy());
 }
 
-// 生成所有可用的邀请链接（本机 + 各局域网网卡）
+// 生成所有可用的邀请链接（公网部署给域名，本地开发给局域网网卡）
 async function buildShareLinks(roomId) {
   const links = [];
   const port = location.port ? ':' + location.port : '';
-  const mk = (hostname) => `http://${hostname}${port}/?room=${roomId}`;
-  if (!/^(localhost|127\.|0\.)/.test(location.hostname)) links.push({ label: '当前网络', url: mk(location.hostname) });
+  const proto = location.protocol === 'https:' ? 'https:' : 'http:';
+  const mk = (hostname) => `${proto}//${hostname}${port}/?room=${roomId}`;
+  if (!/^(localhost|127\.|0\.)/.test(location.hostname)) {
+    // 公网/域名部署：直接给当前域名链接
+    links.push({ label: '邀请链接', url: mk(location.hostname) });
+    return links;
+  }
   try {
     const d = await api('/lan');
     for (const addr of d.addrs || []) links.push({ label: '局域网 ' + addr, url: mk(addr) });
