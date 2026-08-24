@@ -66,6 +66,7 @@ socket.on('toast', (m) => log('提示:', m.msg));
 
 // ---------- 流程 ----------
 socket.emit('room:create', { mode: 'squad', scenery: 'day', name: '测试房间' }, (res) => {
+socket.emit('room:start', {}, () => {}); // 房主即全员就绪，直接开局
   log('创建房间:', JSON.stringify(res));
 });
 

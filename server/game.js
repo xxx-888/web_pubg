@@ -303,7 +303,7 @@ export class Battle {
           x = Math.cos(a) * r; z = Math.sin(a) * r;
         }
         const h = this.terrain.height(x, z);
-        ok = h > 1.2 && h < 30 && !this._vehHitsWall(x, z, 3); // 不刷在墙体里
+        ok = h > 1.2 && h < 30 && !this._vehHitsWall(x, z, 3) && !this.terrain.hitsObstacle(x, z, 3); // 不刷在墙体/大石头里
       }
       if (!ok) continue;
       const type = pick(types);
@@ -482,6 +482,8 @@ export class Battle {
       f.z = clamp(f.z, -this.mapDef.size * 0.49, this.mapDef.size * 0.49);
       const pushed = this._pushOutWalls(f.x, f.z, 0.5, f.y); // 机器人不能穿墙
       f.x = pushed.x; f.z = pushed.z;
+      const obsBot = this.terrain.pushOutObstacle(f.x, f.z, 0.5); // 也不能穿树/石头
+      f.x = obsBot.x; f.z = obsBot.z;
       f.y = Math.max(this._groundY(f.x, f.z, f.y), -0.4); // 屋内跟随地板，水里浮在水面
 
       // 卡死检测：3 秒没挪动就换目标（被墙挡住等）
@@ -691,6 +693,8 @@ export class Battle {
 
       f.x = clamp(f.x, -this.mapDef.size * 0.49, this.mapDef.size * 0.49);
       f.z = clamp(f.z, -this.mapDef.size * 0.49, this.mapDef.size * 0.49);
+      const obsPos = this.terrain.pushOutObstacle(f.x, f.z, 0.5); // 不能穿树/石头
+      f.x = obsPos.x; f.z = obsPos.z;
       f.y = clamp(f.y, floorY, 900);
 
       if (f.viol > 150) { this.io.to(f.socketId).emit('err', { msg: '移动数据异常，已被移出对局' }); this.room.kick(f.socketId, '数据异常'); return; }
@@ -950,6 +954,7 @@ export class Battle {
           if (Math.abs(nh - v.y) > 2.6 * Math.max(dist, 0.05) || nh < 0.1 ||
             Math.abs(nx) > this.mapDef.size * 0.48 || Math.abs(nz) > this.mapDef.size * 0.48) blocked = true;
           if (!blocked && this._vehHitsWall(nx, nz, 2.2)) blocked = true; // 撞墙
+          if (!blocked && this.terrain.hitsObstacle(nx, nz, 1.8)) blocked = true; // 撞树/石头
           if (blocked) {
             const drv = this.entities.get(v.driver) || null;
             if (Math.abs(v.speed) > 10) {

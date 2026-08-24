@@ -509,6 +509,16 @@ export class Game {
     if (this.isTouch) $('touch-ui').classList.remove('hidden');
     else $('crosshair').classList.remove('hidden');
     if (this.isAdmin) $('gm-panel').classList.remove('hidden');
+    $('net-hud').classList.remove('hidden');
+    this._ping = null;
+    const measure = () => {
+      const t = Date.now();
+      this.socket.emit('ping', { t }, () => {
+        if (!this.disposed) this._ping = Date.now() - t;
+      });
+    };
+    measure();
+    this._pingTimer = setInterval(measure, 2000);
 
     // ESP 画布
     this.espCanvas = document.createElement('canvas');
@@ -1490,6 +1500,15 @@ export class Game {
     const dt = Math.min((now - this.lastT) / 1000, 0.1);
     this.lastT = now;
 
+    // 帧率统计
+    this._fpsCount = (this._fpsCount || 0) + 1;
+    if (!this._fpsAt) this._fpsAt = now;
+    else if (now - this._fpsAt >= 1000) {
+      this._fps = Math.round(this._fpsCount * 1000 / (now - this._fpsAt));
+      this._fpsCount = 0;
+      this._fpsAt = now;
+    }
+
     this._updateSelf(dt, now);
     this._updateSelfMesh(dt);
     this._updateEnts(dt, now);
@@ -1614,6 +1633,9 @@ export class Game {
     // 建筑碰撞
     const pushed = this._collideBuildings(nx, nz, 0.45, s.pos.y);
     nx = pushed.x; nz = pushed.z;
+    // 树木/石头障碍（与服务端同一份判定）
+    const obs = this.terrain.pushOutObstacle(nx, nz, 0.45);
+    nx = obs.x; nz = obs.z;
     nx = clamp(nx, -this.half * 0.99, this.half * 0.99);
     nz = clamp(nz, -this.half * 0.99, this.half * 0.99);
     s.pos.x = nx; s.pos.z = nz;
@@ -2028,6 +2050,21 @@ export class Game {
       if (!$('bigmap').classList.contains('hidden')) this._drawMap($('bigmap-canvas'), 640, true);
       this._showScoreboardLive();
     }
+
+    // 网络延迟 + 帧率（右上角，每 500ms 刷新一次文字）
+    if (now - (this._netHudAt || 0) > 500) {
+      this._netHudAt = now;
+      const el = $('net-hud');
+      if (el) {
+        const p = this._ping;
+        const f = this._fps;
+        const pCls = p == null ? '' : p < 80 ? 'good' : p < 150 ? 'mid' : 'bad';
+        const fCls = f == null ? '' : f >= 50 ? 'good' : f >= 30 ? 'mid' : 'bad';
+        el.innerHTML =
+          `延迟 <b class="${pCls}">${p == null ? '--' : p}</b>ms` +
+          ` · <b class="${fCls}">${f == null ? '--' : f}</b>FPS`;
+      }
+    }
   }
 
   _updateInvHud() {
@@ -2192,13 +2229,14 @@ export class Game {
     document.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('keyup', this._onKeyUp);
     document.removeEventListener('fullscreenchange', this._onFsChange);
+    if (this._pingTimer) { clearInterval(this._pingTimer); this._pingTimer = null; }
     window.removeEventListener('resize', this._onResize);
     this.sfx.wind(false, 0);
     this.sfx.engine(false, 0);
     if (this.renderer) this.renderer.dispose();
     if (this.espCanvas) this.espCanvas.remove();
     // 清理 DOM 状态
-    for (const id of ['hud', 'touch-ui', 'death-screen', 'end-screen', 'pause-menu', 'spectate-bar', 'battle-loading', 'bigmap', 'scoreboard', 'chat-input-row-battle', 'interact-tip', 'plane-tip', 'help-overlay', 'btn-help']) {
+    for (const id of ['hud', 'touch-ui', 'death-screen', 'end-screen', 'pause-menu', 'spectate-bar', 'battle-loading', 'bigmap', 'scoreboard', 'chat-input-row-battle', 'interact-tip', 'plane-tip', 'help-overlay', 'btn-help', 'net-hud']) {
       const el = $(id);
       if (el) el.classList.add('hidden');
     }

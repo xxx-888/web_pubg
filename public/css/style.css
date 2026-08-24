@@ -144,7 +144,7 @@ input { font-family: inherit; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   user-select: all; /* 方便手动长按/双击选中复制 */
 }
-.shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .shop-item {
   background: var(--bg2); border: 1px solid var(--line); border-radius: 8px;
   padding: 8px; text-align: center; font-size: 12px; cursor: pointer;
@@ -158,11 +158,15 @@ input { font-family: inherit; }
 .shop-item.owned .price { color: var(--ok); }
 .shop-preview {
   display: flex; gap: 12px; align-items: center; margin-bottom: 12px;
+  flex-wrap: wrap; /* 窄屏时信息换行到画布下方，不再裁掉购买按钮 */
   background: radial-gradient(200px 130px at 35% 40%, #2a3145 0%, var(--bg2) 70%);
   border: 1px solid var(--line); border-radius: 10px; padding: 8px;
 }
-.shop-preview canvas { border-radius: 8px; background: transparent; }
-.shop-preview-info { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.shop-preview canvas { border-radius: 8px; background: transparent; flex-shrink: 0; max-width: 100%; }
+.shop-preview-info {
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+  flex: 1; min-width: 140px; /* 保证按钮有立足之地 */
+}
 .lobby-chat {
   position: fixed; bottom: 0; left: 0; right: 0;
   border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;
@@ -276,6 +280,7 @@ input { font-family: inherit; }
   #alive-wrap, #zone-timer { padding: 3px 10px; font-size: 12px; }
   #btn-fullscreen { padding: 3px 8px; font-size: 11px; }
   #minimap { width: 100px !important; height: 100px !important; }
+  #net-hud { top: 10px; right: 118px; font-size: 10px; padding: 3px 8px; }
   #killfeed { top: 30px; width: 180px; font-size: 10px; }
   #weapon-name { font-size: 12px; }
   #slots .slot { width: 40px; height: 34px; font-size: 10px; }
@@ -302,6 +307,17 @@ input { font-family: inherit; }
   border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
   background: rgba(10,14,20,.5);
 }
+/* 延迟/帧率：小地图左侧 */
+#net-hud {
+  position: absolute; top: 12px; right: 202px; z-index: 11;
+  background: rgba(10, 14, 20, .55); border: 1px solid rgba(255,255,255,.12);
+  padding: 4px 10px; border-radius: 6px; font-size: 11px;
+  pointer-events: none; text-shadow: 0 1px 2px #000; white-space: nowrap;
+}
+#net-hud b { font-weight: bold; }
+#net-hud .good { color: #57c26b; }
+#net-hud .mid { color: #ffcf5c; }
+#net-hud .bad { color: #ff7d7d; }
 
 #crosshair {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
@@ -508,4 +524,12 @@ input { font-family: inherit; }
   #killfeed { width: 210px; font-size: 11px; }
   #chatlog-battle { display: none; }
   #minimap { width: 130px !important; height: 130px !important; }
+  /* 商店预览：画布缩小居中，名称+按钮横排，窄屏绝不裁切 */
+  .shop-preview { justify-content: center; }
+  .shop-preview canvas { width: 150px; height: auto; }
+  .shop-preview-info {
+    flex-direction: row; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px; min-width: 0; width: 100%;
+  }
+  .shop-preview-info b { font-size: 15px; }
 }

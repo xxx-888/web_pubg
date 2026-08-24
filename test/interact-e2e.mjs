@@ -10,6 +10,11 @@ const login = await fetch(BASE + '/api/register', {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ username: 'e2e_' + Date.now().toString(36), password: 'pass1234' }),
 }).then(r => r.json());
+// 管理员授权 GM（v22 起 GM 指令需授权）
+try {
+  const al = await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: '88888888', password: 'admin123' }) }).then(r => r.json());
+  await fetch(BASE + '/api/admin/user', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + al.token }, body: JSON.stringify({ id: login.user.id, action: 'gm', value: true }) });
+} catch (e) { /* 失败则无 GM 继续 */ }
 if (!login.token) { console.error('登录失败'); process.exit(1); }
 
 const socket = io(BASE, { auth: { token: login.token } });
@@ -146,4 +151,5 @@ setInterval(() => {
 socket.on('shot', (m) => { if (m.id === myId) results.shotFired = true; });
 
 socket.emit('room:create', { mode: 'squad', scenery: 'day' }, (r) => log('房间:', r.ok ? r.id : r.msg));
+socket.emit('room:start', {}, () => {}); // 房主即全员就绪，直接开局
 setTimeout(() => { log('超时'); log(JSON.stringify(results)); process.exit(1); }, 240000);

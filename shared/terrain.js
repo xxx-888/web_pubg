@@ -174,6 +174,59 @@ export class Terrain {
     return list;
   }
 
+  // 树干/石头圆形碰撞体（带网格加速索引）；灌木不挡路只隐蔽
+  obstacles() {
+    if (this._obst) return this._obst;
+    const list = [];
+    for (const t of this.trees()) list.push({ x: t.x, z: t.z, r: 0.45 + t.s * 0.28 });
+    for (const k of this.rocks()) list.push({ x: k.x, z: k.z, r: 0.55 + k.s * 0.62 });
+    const cell = 20, map = new Map();
+    for (const o of list) {
+      const key = Math.floor(o.x / cell) + ',' + Math.floor(o.z / cell);
+      let arr = map.get(key);
+      if (!arr) { arr = []; map.set(key, arr); }
+      arr.push(o);
+    }
+    this._obst = { cell, map };
+    return this._obst;
+  }
+
+  // 圆形障碍推出（人物/机器人用），返回修正后的坐标
+  pushOutObstacle(x, z, radius) {
+    const { cell, map } = this.obstacles();
+    const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const arr = map.get((cx + i) + ',' + (cz + j));
+      if (!arr) continue;
+      for (const o of arr) {
+        const min = o.r + radius;
+        const dx = x - o.x, dz = z - o.z;
+        if (Math.abs(dx) > min || Math.abs(dz) > min) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= min * min) continue;
+        const d = Math.sqrt(d2);
+        if (d > 1e-4) { x = o.x + (dx / d) * min; z = o.z + (dz / d) * min; }
+        else x = o.x + min; // 恰好在圆心：向东推出
+      }
+    }
+    return { x, z };
+  }
+
+  // 是否撞上障碍（载具/刷怪点用）
+  hitsObstacle(x, z, radius) {
+    const { cell, map } = this.obstacles();
+    const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const arr = map.get((cx + i) + ',' + (cz + j));
+      if (!arr) continue;
+      for (const o of arr) {
+        const min = o.r + radius;
+        if ((x - o.x) * (x - o.x) + (z - o.z) * (z - o.z) < min * min) return true;
+      }
+    }
+    return false;
+  }
+
   // 拾取物候选点：屋内优先（可进房捡装备），其余在建筑附近与野外
   lootSpots() {
     if (this._lootSpots) return this._lootSpots;

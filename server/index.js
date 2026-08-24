@@ -182,6 +182,8 @@ io.on('connection', (socket) => {
     } catch (e) { /* 忽略 */ }
   });
 
+  socket.on('ping', (m, cb) => cb && cb({ t: m && m.t })); // 延迟测量回显
+
   socket.on('gm', (m = {}) => {
     try {
       if ((user.role !== 'admin' && !user.gm) || !m || !m.cmd) return;

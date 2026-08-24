@@ -5,10 +5,15 @@ import { Terrain } from '../shared/terrain.js';
 const BASE = 'http://localhost:8080';
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
-const login = await fetch(BASE + '/api/login', {
+const login = await fetch(BASE + '/api/register', {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+  body: JSON.stringify({ username: 't_' + Date.now().toString(36), password: 'pass1234' }),
 }).then(r => r.json());
+// 管理员授权 GM（v22 起 GM 指令需授权）
+try {
+  const al = await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: '88888888', password: 'admin123' }) }).then(r => r.json());
+  await fetch(BASE + '/api/admin/user', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + al.token }, body: JSON.stringify({ id: login.user.id, action: 'gm', value: true }) });
+} catch (e) { /* 失败则无 GM 继续 */ }
 
 const socket = io(BASE, { auth: { token: login.token } });
 let terrain = null, myId = null;
@@ -64,6 +69,7 @@ setInterval(() => {
 }, 50);
 
 socket.emit('room:create', { mode: 'squad', scenery: 'day' }, (r) => log('房间:', r.ok ? r.id : r.msg));
+socket.emit('room:start', {}, () => {}); // 房主即全员就绪，直接开局
 
 // 空投首投在开局 75 秒后，等 3 个空投或 5 分钟
 setTimeout(() => {

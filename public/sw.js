@@ -1,10 +1,10 @@
-const CACHE = 'firezone-v23';
+const CACHE = 'firezone-v26';
 const ASSETS = [
   '/',
   '/admin.html',
-  '/css/style.css?v=23',
-  '/js/main.js?v=23',
-  '/js/game.js?v=23',
+  '/css/style.css?v=26',
+  '/js/main.js?v=26',
+  '/js/game.js?v=26',
   '/vendor/three.module.js',
 ];
 

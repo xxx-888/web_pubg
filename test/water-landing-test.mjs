@@ -64,6 +64,7 @@ setInterval(() => {
 }, 50);
 
 socket.emit('room:create', { mode: 'solo', scenery: 'day' }, (r) => log('房间:', r.ok, r.id || r.msg));
+socket.emit('room:start', {}, () => {}); // 房主即全员就绪，直接开局
 
 function finish() {
   setTimeout(() => {
