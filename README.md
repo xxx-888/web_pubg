@@ -4,6 +4,42 @@
 
 ![技术栈](https://img.shields.io/badge/Three.js-r170-orange) ![技术栈](https://img.shields.io/badge/Socket.io-4.8-blue) ![技术栈](https://img.shields.io/badge/Node.js-ESM-green)
 
+## 📸 功能一览（真实游戏截图）
+
+**大厅 · 商店 · 组队**
+
+| 大厅与 3D 试穿商店 | 房间等待 · 全员准备后房主开局 |
+|:---:|:---:|
+| ![大厅](docs/images/lobby.png) | ![房间](docs/images/room.png) |
+
+| 好友邀请链接（自动进房） | 操作说明（电脑 / 手机） |
+|:---:|:---:|
+| ![邀请链接](docs/images/share-links.png) | ![操作说明](docs/images/help.png) |
+
+**空降 · 战斗**
+
+| 运输机待跳伞 | 跳伞滑翔 · 自选落点 |
+|:---:|:---:|
+| ![运输机](docs/images/battle-plane.png) | ![跳伞](docs/images/parachute.png) |
+
+| 地面战斗（血条/弹药/小地图/延迟帧率角标） | 大地图（装备 / 载具 / 毒圈位置） |
+|:---:|:---:|
+| ![战斗](docs/images/battle-ground.png) | ![大地图](docs/images/bigmap.png) |
+
+**后台管理**（`/admin.html`，管理员账号）
+
+| 概览 · 全服公告 | 用户管理（在线/搜索/分页/GM 授权） |
+|:---:|:---:|
+| ![概览](docs/images/admin-overview.png) | ![用户管理](docs/images/admin-users.png) |
+
+| 房间管理（成员/踢人/解散） | 商店套装配色编辑（颜色拾取器） |
+|:---:|:---:|
+| ![房间管理](docs/images/admin-rooms.png) | ![商店编辑](docs/images/admin-shop.png) |
+
+| 全局设置（人数/机器人/奖励） | 后台登录 |
+|:---:|:---:|
+| ![设置](docs/images/admin-settings.png) | ![后台登录](docs/images/admin-login.png) |
+
 ## 玩法特性
 
 - **空降开局**：运输机航线跳伞 + 滑翔操控，落点自己选（房顶也能站）
