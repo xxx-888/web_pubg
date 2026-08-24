@@ -3,7 +3,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FIREZONE 烽区行动</title>
-  <link rel="stylesheet" href="/css/style.css?v=17">
+  <link rel="stylesheet" href="/css/style.css?v=20">
   <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;🔥&lt;/text&gt;&lt;/svg&gt;">
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -157,6 +157,7 @@
       <div id="top-bar">
         <div id="alive-wrap">存活 <b id="alive-count">0</b></div>
         <div id="zone-timer"></div>
+        <button id="btn-fullscreen" title="全屏（手机会尝试锁定横屏）">⛶ 全屏</button>
       </div>
       <div id="killfeed"></div>
       <canvas id="minimap" width="180" height="180"></canvas>
@@ -209,22 +210,29 @@
     <div id="touch-ui" class="hidden">
       <div id="joy-base"><div id="joy-knob"></div></div>
       <div id="look-zone"></div>
-      <div id="touch-btns">
+      <!-- 战斗键：右手拇指区弧形排布 -->
+      <div id="touch-actions">
         <button id="tb-fire" class="tbtn fire">🔥</button>
         <button id="tb-ads" class="tbtn">🎯</button>
-        <button id="tb-jump" class="tbtn">🪂</button>
-        <button id="tb-crouch" class="tbtn">⬇</button>
         <button id="tb-reload" class="tbtn">🔄</button>
         <button id="tb-interact" class="tbtn">✋</button>
-        <button id="tb-map" class="tbtn">🗺</button>
-        <button id="tb-person" class="tbtn">👁</button>
+        <button id="tb-crouch" class="tbtn">⬇</button>
+        <button id="tb-jump" class="tbtn">🪂</button>
+      </div>
+      <!-- 工具键：小地图下方（非战斗操作） -->
+      <div id="touch-utils">
+        <button id="tb-map" class="tbtn util">🗺</button>
+        <button id="tb-person" class="tbtn util">👁</button>
       </div>
     </div>
 
     <!-- 记分板 -->
     <div id="scoreboard" class="overlay hidden"><div class="card sb-card"><h3>本局信息</h3><div id="sb-body"></div></div></div>
     <!-- 大地图 -->
-    <div id="bigmap" class="overlay hidden"><canvas id="bigmap-canvas" width="640" height="640"></canvas></div>
+    <div id="bigmap" class="overlay hidden">
+      <canvas id="bigmap-canvas" width="640" height="640"></canvas>
+      <button id="btn-map-close" class="btn small danger">✕ 关闭地图</button>
+    </div>
     <!-- 死亡结算 -->
     <div id="death-screen" class="overlay center-page hidden">
       <div class="card death-card">
@@ -309,6 +317,14 @@
     </div>
     <div id="dmg-vignette"></div>
     <div id="zone-vignette"></div>
+
+    <!-- 竖屏旋转提示（手机竖屏进入战斗时显示） -->
+    <div id="rotate-overlay">
+      <div class="rotate-phone">📱</div>
+      <p>请旋转手机至<b>横屏</b>后操作</p>
+      <p class="muted" style="font-size:12px">横屏视野更宽，摇杆和技能键更好按；也可点右上「⛶ 全屏」自动横屏</p>
+      <button id="btn-rotate-skip" class="btn small ghost">仍要用竖屏玩</button>
+    </div>
   </section>
 
   <div id="toasts"></div>
@@ -323,6 +339,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=17"></script>
+  <script type="module" src="/js/main.js?v=20"></script>
 
 </body></html>

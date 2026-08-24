@@ -228,6 +228,60 @@ input { font-family: inherit; }
   background: rgba(10, 14, 20, .6); padding: 5px 14px; border-radius: 6px; font-size: 13px;
   border: 1px solid rgba(255,255,255,.08);
 }
+#btn-fullscreen {
+  pointer-events: auto;
+  background: rgba(10, 14, 20, .6); border: 1px solid rgba(255,255,255,.2);
+  color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 6px;
+}
+
+/* ---------- 手机竖屏旋转提示 ---------- */
+#rotate-overlay {
+  position: absolute; inset: 0; z-index: 70;
+  background: rgba(8, 10, 14, .97);
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; text-align: center; padding: 20px;
+}
+#rotate-overlay .rotate-phone {
+  font-size: 64px;
+  animation: rotateHint 1.8s ease-in-out infinite;
+}
+@keyframes rotateHint { 0%, 15% { transform: rotate(0); } 55%, 100% { transform: rotate(90deg); } }
+/* 仅触屏设备竖屏时显示（点"仍要竖屏玩"后本次会话不再提示） */
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate-overlay:not(.skipped) { display: flex; }
+}
+
+/* ---------- 手机横屏（高度小）控件压缩 ---------- */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  #joy-base { width: 96px; height: 96px; left: 12px; bottom: 106px; }
+  #joy-knob { width: 44px; height: 44px; }
+  #touch-actions { width: 220px; height: 170px; }
+  #tb-fire { width: 72px; height: 72px; right: 12px; bottom: 12px; font-size: 28px; }
+  #tb-ads { right: 94px; bottom: 12px; }
+  #tb-reload { right: 160px; bottom: 26px; }
+  #tb-interact { right: 22px; bottom: 96px; }
+  #tb-crouch { right: 94px; bottom: 94px; }
+  #tb-jump { right: 160px; bottom: 106px; }
+  .tbtn { width: 52px; height: 52px; font-size: 20px; }
+  #touch-utils { top: 122px; }
+  .tbtn.util { width: 38px; height: 38px; font-size: 15px; }
+  #bottom-left { bottom: 8px; left: 12px; width: 190px; }
+  #meds-row { gap: 6px; margin-top: 5px; }
+  .med-btn { width: 44px; height: 36px; font-size: 14px; }
+  .med-btn b { font-size: 10px; }
+  .med-btn small { display: none; }
+  #hp-bar { height: 11px; }
+  #hp-num { font-size: 13px; min-width: 24px; }
+  #top-bar { top: 6px; font-size: 12px; gap: 8px; }
+  #alive-wrap, #zone-timer { padding: 3px 10px; font-size: 12px; }
+  #btn-fullscreen { padding: 3px 8px; font-size: 11px; }
+  #minimap { width: 100px !important; height: 100px !important; }
+  #killfeed { top: 30px; width: 180px; font-size: 10px; }
+  #weapon-name { font-size: 12px; }
+  #slots .slot { width: 40px; height: 34px; font-size: 10px; }
+  #interact-tip { font-size: 12px; }
+  .hud-help { top: 118px; font-size: 11px; padding: 4px 8px; }
+}
 #alive-wrap b { color: var(--accent2); }
 #zone-timer.warn { color: #ff7d7d; }
 
@@ -359,6 +413,7 @@ input { font-family: inherit; }
 .sb-card th { color: var(--muted); font-weight: normal; }
 #bigmap { display: flex; align-items: center; justify-content: center; }
 #bigmap-canvas { max-width: 92vmin; max-height: 92vmin; border-radius: 10px; border: 1px solid var(--line); }
+#btn-map-close { position: absolute; top: 14px; right: 14px; padding: 10px 18px; font-size: 15px; z-index: 2; }
 
 /* 死亡/结算 */
 .death-card { width: min(92vw, 420px); text-align: center; padding: 28px; }
@@ -410,9 +465,23 @@ input { font-family: inherit; }
   border-radius: 50%; background: rgba(255,255,255,.3); transform: translate(-50%,-50%);
 }
 #look-zone { position: absolute; right: 0; top: 0; width: 55%; height: 100%; }
-#touch-btns { position: absolute; right: 18px; bottom: 90px; display: grid; grid-template-columns: repeat(2, 64px); gap: 10px; }
+/* 战斗键：右手拇指弧形区（fire 大，其余环绕） */
+#touch-actions { position: absolute; right: 0; bottom: 0; width: 250px; height: 190px; z-index: 2; pointer-events: none; }
+#touch-actions .tbtn { position: absolute; pointer-events: auto; }
+#tb-fire { right: 16px; bottom: 20px; width: 82px; height: 82px; font-size: 32px; }
+#tb-ads { right: 110px; bottom: 16px; }
+#tb-reload { right: 188px; bottom: 30px; }
+#tb-interact { right: 28px; bottom: 114px; }
+#tb-crouch { right: 110px; bottom: 110px; }
+#tb-jump { right: 188px; bottom: 122px; }
+/* 工具键：小地图正下方，不占战斗区 */
+#touch-utils { position: absolute; top: 200px; right: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }
+.tbtn.util { width: 44px; height: 44px; font-size: 18px; opacity: .85; }
+/* 可交互时 ✋ 高亮呼吸 */
+.tbtn.usable { border-color: var(--accent); animation: tbtnPulse 1s infinite; }
+@keyframes tbtnPulse { 50% { box-shadow: 0 0 14px rgba(255, 140, 46, .85); } }
 .tbtn {
-  width: 64px; height: 64px; border-radius: 50%; font-size: 24px;
+  width: 60px; height: 60px; border-radius: 50%; font-size: 24px;
   background: rgba(10,14,20,.55); border: 2px solid rgba(255,255,255,.25); color: #fff;
 }
 .tbtn.fire { background: rgba(224, 82, 82, .5); border-color: rgba(255,120,120,.6); font-size: 26px; }

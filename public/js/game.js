@@ -583,6 +583,31 @@ export class Game {
     $('btn-help').onclick = () => showHelp(true);
     $('btn-help-close').onclick = () => showHelp(false);
     if (!localStorage.getItem('fz_help_seen')) showHelp(true);
+
+    // 手机横屏：全屏并尝试锁定横屏（需在手势里触发）
+    $('btn-fullscreen').onclick = async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          try { await screen.orientation.lock('landscape'); } catch { /* iOS 不支持，靠旋转提示 */ }
+          toast('已进入全屏模式');
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch { toast('当前浏览器不允许全屏', 'error'); }
+    };
+    // 竖屏提示的"仍要竖屏玩"：本次会话不再提示
+    const rotateOv = $('rotate-overlay');
+    if (sessionStorage.getItem('fz_rotate_skip')) rotateOv.classList.add('skipped');
+    $('btn-rotate-skip').onclick = () => {
+      rotateOv.classList.add('skipped');
+      sessionStorage.setItem('fz_rotate_skip', '1');
+    };
+    // 全屏状态变化时同步按钮文案
+    document.addEventListener('fullscreenchange', this._onFsChange = () => {
+      const b = $('btn-fullscreen');
+      if (b) b.textContent = document.fullscreenElement ? '⛶ 退出' : '⛶ 全屏';
+    });
     if (this.isAdmin) {
       document.querySelectorAll('#gm-panel button').forEach(btn => {
         btn.onclick = () => this._gmCmd(btn.dataset.cmd);
@@ -733,6 +758,11 @@ export class Game {
   }
 
   _initTouch() {
+    // 每局重开时清掉上一局累积在持久 DOM 上的触屏监听（clone 不带监听器），否则按钮会多次触发
+    for (const id of ['joy-base', 'look-zone', 'tb-fire', 'tb-ads', 'tb-jump', 'tb-crouch', 'tb-reload', 'tb-interact', 'tb-map', 'tb-person', 'btn-map-close', 'bigmap']) {
+      const el = $(id);
+      if (el) el.replaceWith(el.cloneNode(true));
+    }
     const base = $('joy-base'), knob = $('joy-knob');
     let joyTouch = null;
     const rectCenter = () => {
@@ -796,6 +826,15 @@ export class Game {
     hold('tb-reload', () => this.socket.emit('reload'));
     hold('tb-interact', () => this._interact());
     hold('tb-map', () => $('bigmap').classList.toggle('hidden'));
+    // 大地图关闭：按钮 + 点空白处（移动端没有 M 键）
+    const closeMap = () => $('bigmap').classList.add('hidden');
+    const mapBtn = $('btn-map-close');
+    mapBtn.addEventListener('touchstart', (e) => { e.preventDefault(); closeMap(); }, { passive: false });
+    mapBtn.onclick = closeMap;
+    $('bigmap').addEventListener('touchstart', (e) => {
+      if (e.target === $('bigmap')) { e.preventDefault(); closeMap(); }
+    }, { passive: false });
+    $('bigmap').addEventListener('click', (e) => { if (e.target === $('bigmap')) closeMap(); });
     hold('tb-person', () => { this.fp = !this.fp; });
   }
 
@@ -1973,11 +2012,14 @@ export class Game {
     const ch = $('crosshair');
     if (ch) ch.style.transform = `translate(-50%,-50%) scale(${this.ads ? 0.45 : 1})`;
 
-    // 交互提示
+    // 交互提示（触屏 ✋ 键同步高亮）
     const n = this._nearestInteract();
     const tip = $('interact-tip');
-    if (n && !this.dead) { tip.textContent = n.label; tip.classList.remove('hidden'); }
+    const canAct = !!(n && !this.dead);
+    if (canAct) { tip.textContent = n.label; tip.classList.remove('hidden'); }
     else tip.classList.add('hidden');
+    const tbInt = $('tb-interact');
+    if (tbInt) tbInt.classList.toggle('usable', canAct);
 
     // 小地图
     if (now - this.lastMapDraw > 250) {
@@ -2149,6 +2191,7 @@ export class Game {
     document.removeEventListener('wheel', this._onWheel);
     document.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('keyup', this._onKeyUp);
+    document.removeEventListener('fullscreenchange', this._onFsChange);
     window.removeEventListener('resize', this._onResize);
     this.sfx.wind(false, 0);
     this.sfx.engine(false, 0);
