@@ -1,5 +1,6 @@
 // 客户端主流程：登录 / 大厅 / 商店 / 房间 / 战斗调度
-import { Game, makeCharacterMesh } from './game.js';
+import { Game, makeCharacterMesh } from './game.js?v=31';
+import { Assets, makeHumanoid, WEAPON_DEFS } from './models.js?v=31';
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -97,6 +98,11 @@ function enterLobby() {
   loadCfg();
   loadLeaderboard();
   connectSocket();
+  // 登录后立刻后台预载 3D 素材（真人角色/枪械/载具），进对局时即取即用
+  Assets.load((p) => {
+    const el = document.getElementById('asset-preload');
+    if (el) el.textContent = p < 1 ? `3D 素材加载中 ${(p * 100) | 0}%` : '';
+  });
 }
 
 async function loadCfg() {
@@ -157,30 +163,53 @@ function initSkinPreview() {
     renderer.setSize(220, 240, false);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 220 / 240, 0.1, 20);
-    camera.position.set(0, 1.15, 3.1);
+    camera.position.set(0.15, 1.15, 2.75);
     camera.lookAt(0, 0.95, 0);
-    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a4030, 1.0));
-    const dir = new THREE.DirectionalLight(0xfff2dd, 1.1);
-    dir.position.set(2, 3, 2);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a5a6a, 1.6));
+    const dir = new THREE.DirectionalLight(0xfff2dd, 2.0);
+    dir.position.set(2, 3, 2.5);
     scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xbcd0ff, 1.0);
+    dir2.position.set(-2.5, 1.5, -1);
+    scene.add(dir2);
     let mesh = null;
+    let lastT = performance.now();
     const loop = () => {
+      const now = performance.now();
+      const dt = Math.min((now - lastT) / 1000, 0.05);
+      lastT = now;
       if ($('page-lobby').classList.contains('hidden')) { requestAnimationFrame(loop); return; }
-      if (mesh) mesh.group.rotation.y += 0.014;
+      if (mesh) {
+        mesh.group.rotation.y += 0.014;
+        if (mesh.updateAnim) mesh.updateAnim(dt, { st: 'g', moving: false, sprint: false, crouch: false, wid: 'm4' });
+      }
       renderer.render(scene, camera);
       requestAnimationFrame(loop);
     };
     skinPreview = {
       setOutfit(item) {
         if (mesh) scene.remove(mesh.group);
-        mesh = makeCharacterMesh(outfitOf(item));
-        // 预览摆个持枪姿势更帅气
-        mesh.armL.rotation.x = -1.05;
-        mesh.armR.rotation.x = -1.3;
-        mesh.gun.visible = true;
+        // 真人模型（带待机动画 + 手持 M4）；素材未就绪时退回方块人
+        if (Assets.soldierReady) {
+          mesh = makeHumanoid(outfitOf(item));
+          mesh.setWeapon('m4', WEAPON_DEFS.m4);
+        } else {
+          mesh = makeCharacterMesh(outfitOf(item));
+          mesh.armL.rotation.x = -1.05;
+          mesh.armR.rotation.x = -1.3;
+          mesh.gun.visible = true;
+        }
         scene.add(mesh.group);
+        // 素材晚到：下一次选择皮肤时自动用上真人模型
       },
     };
+    // 素材加载完成后自动把预览刷新成真人（若商店已打开）
+    Assets.load().then(() => {
+      if (skinPreview && previewItemId) {
+        const it = (state.cfg?.shop || []).find(s => s.id === previewItemId);
+        if (it) skinPreview.setOutfit(it);
+      }
+    });
     // 默认显示已装备的
     const equipped = (state.cfg?.shop || []).find(s => s.id === state.user?.skin);
     if (equipped) skinPreview.setOutfit(equipped);

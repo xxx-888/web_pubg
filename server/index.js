@@ -29,6 +29,8 @@ app.use('/shared', express.static(path.join(ROOT, 'shared')));
 app.get('/vendor/three.module.js', (req, res) => {
   res.sendFile(path.join(ROOT, 'node_modules', 'three', 'build', 'three.module.min.js'));
 });
+// three.js 官方插件（GLTFLoader / SkeletonUtils 等），供浏览器原生 ESM 加载
+app.use('/vendor/addons', express.static(path.join(ROOT, 'node_modules', 'three', 'examples', 'jsm')));
 app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
 // 局域网地址列表（客户端用来生成房间邀请链接）

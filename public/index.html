@@ -3,9 +3,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FIREZONE 烽区行动</title>
-  <link rel="stylesheet" href="/css/style.css?v=27">
+  <link rel="stylesheet" href="/css/style.css?v=31">
   <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;🔥&lt;/text&gt;&lt;/svg&gt;">
   <script src="/socket.io/socket.io.js"></script>
+  <!-- three.js 插件(GLTFLoader 等)内部以裸模块名 'three' 导入，用 importmap 指到本地同一份 three -->
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three.module.js" } }
+  </script>
 </head>
 <body>
 
@@ -340,6 +344,6 @@
     </div>
   </div>
 
-  <script type="module" src="/js/main.js?v=27"></script>
+  <script type="module" src="/js/main.js?v=31"></script>
 
 </body></html>

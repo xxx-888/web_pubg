@@ -1,6 +1,7 @@
 // FIREZONE 战斗客户端：Three.js 渲染 + 本地预测 + HUD
 import * as THREE from '/vendor/three.module.js';
 import { Terrain } from '/shared/terrain.js';
+import { Assets, makeHumanoid, makeVehicleMesh, makePlaneMesh, makeCrateMesh, makeWeapon, weaponLootGeometry, WEAPON_DEFS } from './models.js?v=31';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -165,7 +166,7 @@ export class Game {
 
     this._initThree();
     this._buildWorld();
-    // 自己的角色模型（第三人称显示）
+    // 自己的角色模型（第三人称显示）：真人模型就绪前先用方块人，就绪后自动换
     const myInfo = this.names[this.self.id] || {};
     this.ownMesh = this._makePlayerMesh(myInfo.sk || '#7a8a5a');
     this.ownMesh.group.visible = false;
@@ -173,6 +174,11 @@ export class Game {
     this._initHud();
     this._initInput();
     this._initSocket();
+    // 素材就绪（或失败超时）后：把所有方块人换成真人模型
+    Assets.load().then(() => {
+      if (this.disposed) return;
+      this._swapAllToHumanoid();
+    });
 
     this.socket.emit('battle:hello');
     this._loop = this._loop.bind(this);
@@ -468,6 +474,13 @@ export class Game {
   }
 
   _makePlane() {
+    if (Assets.ready) {
+      const p = makePlaneMesh();
+      if (p) {
+        p.group.userData.mixer = p.mixer;
+        return p.group;
+      }
+    }
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 14, 8), new THREE.MeshLambertMaterial({ color: 0x8a939e }));
     body.rotation.x = Math.PI / 2;
@@ -482,7 +495,99 @@ export class Game {
   }
 
   _makePlayerMesh(outfit) {
-    return makeCharacterMesh(outfit, !!(this.scenery && this.scenery.night));
+    if (Assets.soldierReady) return this._makeHumanoidMesh(outfit);
+    return this._makeLegacyMesh(outfit);
+  }
+
+  // 真人模型（带骨骼动画）；皮肤=整套染色
+  _makeHumanoidMesh(outfit) {
+    const h = makeHumanoid(outfit, !!(this.scenery && this.scenery.night));
+    return h;
+  }
+
+  // 方块人兜底（素材加载失败时游戏照常可玩），接口与真人版一致
+  _makeLegacyMesh(outfit) {
+    const m = makeCharacterMesh(outfit, !!(this.scenery && this.scenery.night));
+    const o = typeof outfit === 'string' ? { torso: outfit } : (outfit || {});
+    m.humanoid = false;
+    m.animPhase = Math.random() * 6;
+    m.setWeapon = (wid, wdef) => {
+      const armed = wdef && wdef.type !== 'melee';
+      m.gun.visible = armed;
+      if (armed) m.gun.material.color.setHex(wdef.color != null ? wdef.color : 0x22262e);
+    };
+    m.updateAnim = (dt, st) => {
+      m.animPhase += dt * 8;
+      const armed = st.wid && st.wid !== 'fists';
+      if (st.st === 'g' || st.st === 'v') {
+        const sw = st.st === 'g' ? Math.sin(m.animPhase) * 0.65 : 0;
+        m.legL.rotation.x = sw;
+        m.legR.rotation.x = -sw;
+        if (armed) { m.armL.rotation.x = -1.05; m.armR.rotation.x = -1.3; }
+        else { m.armL.rotation.x = -sw * 0.7; m.armR.rotation.x = sw * 0.4; }
+        m.group.scale.y = lerp(m.group.scale.y, st.crouch ? 0.72 : 1, Math.min(1, dt * 10));
+      } else {
+        m.legL.rotation.x = 0.5; m.legR.rotation.x = -0.3;
+        m.armL.rotation.x = -2.6; m.armR.rotation.x = -2.8;
+        m.group.scale.y = 1;
+      }
+      m.chute.visible = st.st === 'c';
+    };
+    m.o = o;
+    return m;
+  }
+
+  // 素材就绪后：已存在的方块人全部升级为真人（保留位置/朝向/武器/名牌）
+  _swapAllToHumanoid() {
+    if (!Assets.soldierReady || this._swappedHumanoid) return;
+    this._swappedHumanoid = true;
+    const swap = (mesh, keepState) => {
+      if (mesh.humanoid) return null;
+      const old = mesh.group;
+      const pos = old.position.clone(), yaw = old.rotation.y;
+      const parent = old.parent;
+      const nm = this._makeHumanoidMesh(mesh.o || keepState.sk || '#7a8a5a');
+      nm.group.position.copy(pos);
+      nm.group.rotation.y = yaw;
+      if (parent) { parent.remove(old); parent.add(nm.group); }
+      // 名牌迁移
+      if (mesh.nameTag) nm.group.add(mesh.nameTag), nm.nameTag = mesh.nameTag;
+      if (keepState.lastWid !== undefined) { nm.lastWid = keepState.lastWid; }
+      return nm;
+    };
+    if (this.ownMesh && !this.ownMesh.humanoid) {
+      const nm = swap(this.ownMesh, {});
+      if (nm) {
+        nm.group.visible = false;
+        this.ownMesh = nm;
+        this._lastOwnWid = null; // 触发武器重挂
+        this._updateInvHud();
+      }
+    }
+    for (const [id, ent] of this.ents) {
+      if (ent.humanoid) continue;
+      const nm = swap(ent, ent);
+      if (nm) {
+        nm.target = ent.target; nm.st = ent.st; nm.cr = ent.cr; nm.hp = ent.hp;
+        nm.wid = ent.wid; nm.vehId = ent.vehId; nm.lastWid = null; nm.info = ent.info;
+        this.ents.set(id, nm);
+      }
+    }
+    // 方块车 → 真实载具
+    for (const [id, vm] of this.vehMeshes) {
+      if (!vm.legacy) continue;
+      const old = vm.group;
+      const g = makeVehicleMesh(vm.type);
+      if (!g) continue;
+      g.position.copy(old.position);
+      g.rotation.copy(old.rotation);
+      this.scene.remove(old);
+      this.scene.add(g);
+      vm.group = g;
+      vm.legacy = false;
+    }
+    // 掉落武器灰盒 → 真枪模型
+    this._refreshLootMeshes();
   }
 
   _makeNameSprite(name, color) {
@@ -990,6 +1095,14 @@ export class Game {
         this.ents.set(id, ent);
       }
       ent.target = { x, y, z, yaw };
+      // 用相邻快照的位移估算速度（驱动走/跑动画）
+      if (ent._prevT) {
+        const dd = Math.hypot(x - ent._prevT.x, z - ent._prevT.z);
+        const dms = Date.now() - (ent._prevAt || Date.now());
+        ent._spd = dms > 0 ? dd / (dms / 1000) : 0;
+      }
+      ent._prevT = { x, z };
+      ent._prevAt = Date.now();
       ent.st = st; ent.cr = !!cr; ent.hp = hp; ent.wid = wid; ent.vehId = vehId;
     }
     for (const [id, ent] of this.ents) {
@@ -1042,6 +1155,12 @@ export class Game {
 
   _makeVehicle(type) {
     const def = (this.cfg.vehicles || []).find(v => v.id === type) || { color: 0x8a8a90 };
+    // 真实载具模型（素材就绪时）
+    if (Assets.ready) {
+      const g = makeVehicleMesh(type);
+      if (g) return { group: g };
+    }
+    // 方块车兜底
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.9, 4.2), new THREE.MeshLambertMaterial({ color: def.color || 0x8a8a90 }));
     body.position.y = 0.85;
@@ -1057,14 +1176,18 @@ export class Game {
       w.position.set(wx, 0.42, wz);
       g.add(w);
     }
-    return { group: g };
+    return { group: g, legacy: true };
   }
 
   _makeCrate() {
     const g = new THREE.Group();
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), new THREE.MeshLambertMaterial({ color: 0xb03a3a }));
-    box.position.y = 0.7;
-    g.add(box);
+    const box = Assets.ready ? makeCrateMesh() : null;
+    if (box) g.add(box);
+    else {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), new THREE.MeshLambertMaterial({ color: 0xb03a3a }));
+      b.position.y = 0.7;
+      g.add(b);
+    }
     const chute = new THREE.Mesh(
       new THREE.SphereGeometry(2.4, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
       new THREE.MeshLambertMaterial({ color: 0xd8d8de, side: THREE.DoubleSide })
@@ -1258,6 +1381,42 @@ export class Game {
     const m4 = new THREE.Matrix4();
     const buckets = { weapon: [], ammo: [], med: [], armor: [] };
     for (const it of this.loot.values()) if (buckets[it.kind]) buckets[it.kind].push(it);
+
+    // 武器掉落：素材就绪时按枪种摆真枪模型，否则灰盒兜底
+    if (Assets.ready) {
+      if (!this._lootWMeshes) this._lootWMeshes = new Map();
+      const byWid = new Map();
+      for (const it of buckets.weapon) {
+        if (!byWid.has(it.wid)) byWid.set(it.wid, []);
+        byWid.get(it.wid).push(it);
+      }
+      for (const [wid, items] of byWid) {
+        let mesh = this._lootWMeshes.get(wid);
+        const geo = weaponLootGeometry(wid);
+        if (!geo) continue;
+        if (!mesh || mesh.instanceMatrix.count < items.length) {
+          if (mesh) { this.scene.remove(mesh); mesh.dispose(); }
+          mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), Math.max(items.length, 24));
+          this.scene.add(mesh);
+          this._lootWMeshes.set(wid, mesh);
+        }
+        mesh.count = items.length;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          const y = this.terrain.height(it.x, it.z);
+          m4.makeRotationY(i * 1.7 + wid.length);
+          m4.setPosition(it.x, Math.max(y, 0.05) + 0.22, it.z);
+          mesh.setMatrixAt(i, m4);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+      // 该枪种已无掉落时隐藏
+      for (const [wid, mesh] of this._lootWMeshes) {
+        if (!byWid.has(wid)) mesh.count = 0;
+      }
+      buckets.weapon = []; // 灰盒不再显示
+    }
+
     for (const [kind, items] of Object.entries(buckets)) {
       const mesh = this._lootMeshes[kind];
       mesh.count = Math.min(items.length, mesh.instanceMatrix.count);
@@ -1477,11 +1636,43 @@ export class Game {
   }
 
   _muzzle(ent) {
-    // 他人枪口闪光：短暂放大枪
-    const g = ent.gun;
-    if (!g) return;
-    g.scale.set(1.6, 1.6, 1.3);
-    setTimeout(() => g.scale.set(1, 1, 1), 50);
+    // 他人枪口闪光：真人在枪口放火光精灵，方块人放大枪身
+    if (ent.humanoid && ent.muzzleWorldPos) {
+      const p = ent.muzzleWorldPos(new THREE.Vector3());
+      this._flashAt(p);
+    } else if (ent.gun) {
+      ent.gun.scale.set(1.6, 1.6, 1.3);
+      setTimeout(() => ent.gun && ent.gun.scale.set(1, 1, 1), 50);
+    }
+  }
+
+  // 枪口火光精灵池（复用，避免高频射击反复建对象）
+  _flashAt(pos) {
+    if (!this._flashPool) {
+      this._flashPool = [];
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const fx = cv.getContext('2d');
+      const grad = fx.createRadialGradient(32, 32, 2, 32, 32, 30);
+      grad.addColorStop(0, 'rgba(255,240,190,1)');
+      grad.addColorStop(0.4, 'rgba(255,190,90,0.85)');
+      grad.addColorStop(1, 'rgba(255,150,50,0)');
+      fx.fillStyle = grad;
+      fx.fillRect(0, 0, 64, 64);
+      this._flashTex = new THREE.CanvasTexture(cv);
+    }
+    let sp = this._flashPool.find((f) => !f.visible);
+    if (!sp) {
+      if (this._flashPool.length > 24) return;
+      sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._flashTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.scene.add(sp);
+      this._flashPool.push(sp);
+    }
+    sp.position.copy(pos);
+    sp.scale.setScalar(0.55);
+    sp.visible = true;
+    clearTimeout(sp._t);
+    sp._t = setTimeout(() => { sp.visible = false; }, 55);
   }
 
   _muzzleSelf() {
@@ -1675,40 +1866,18 @@ export class Game {
     if (!m) return;
     const show = !this.fp && s.st !== 'p' && !this.dead && !this.over;
     m.group.visible = show;
-    if (show) {
-      // 武器换装（与实体一致）
-      const wid = (this.inv.w[this.inv.cur || 0] || {}).wid || 'fists';
-      if (wid !== this._lastOwnWid) {
-        this._lastOwnWid = wid;
-        const wd = this._wdef(wid);
-        const armed = wd && wd.type !== 'melee';
-        m.gun.visible = armed;
-        if (armed) m.gun.material.color.setHex(wd.color != null ? wd.color : 0x22262e);
-      }
-    }
     if (!show) return;
+    // 武器换装（与实体一致）
+    const slot = this.inv.w[this.inv.cur || 0];
+    const wid = (slot || {}).wid || 'fists';
+    if (wid !== this._lastOwnWid) {
+      this._lastOwnWid = wid;
+      m.setWeapon(wid, this._wdef(wid));
+    }
     m.group.position.copy(s.pos);
     m.group.rotation.y = s.yaw;
-    if (s.st === 'g') {
-      const armed = this._curWeapon().type !== 'melee';
-      if (s.moving) {
-        const sw = Math.sin(this.animPhase) * 0.65;
-        m.legL.rotation.x = sw;
-        m.legR.rotation.x = -sw;
-        if (armed) { m.armL.rotation.x = -1.05; m.armR.rotation.x = -1.3; }
-        else { m.armL.rotation.x = -sw * 0.7; m.armR.rotation.x = sw * 0.4; }
-      } else {
-        m.legL.rotation.x = m.legR.rotation.x = 0;
-        if (armed) { m.armL.rotation.x = -1.05; m.armR.rotation.x = -1.3; }
-        else { m.armL.rotation.x = m.armR.rotation.x = 0; }
-      }
-      m.group.scale.y = lerp(m.group.scale.y, s.cr ? 0.72 : 1, Math.min(1, dt * 10));
-    } else {
-      m.legL.rotation.x = 0.5; m.legR.rotation.x = -0.3;
-      m.armL.rotation.x = -2.6; m.armR.rotation.x = -2.8;
-      m.group.scale.y = 1;
-    }
-    m.chute.visible = s.st === 'c';
+    const sprint = this.keys.ShiftLeft || this.keys.ShiftRight;
+    m.updateAnim(dt, { st: s.st, moving: s.moving, sprint: s.moving && sprint, crouch: s.cr, wid });
   }
 
   // 地面高度：室内用地板/屋顶，否则地形（refY 用于区分站在屋顶还是室内）
@@ -1752,38 +1921,18 @@ export class Game {
       ent.group.visible = dist < 420;
       if (ent.nameTag) ent.nameTag.visible = dist < 120;
 
-      // 武器换装：按枪种染色，空手收枪
+      // 武器换装：真人模型挂对应枪械 GLB，方块人染色
       if (ent.wid !== ent.lastWid) {
         ent.lastWid = ent.wid;
-        const wd = this._wdef(ent.wid);
-        const armed = wd && wd.type !== 'melee';
-        if (ent.gun) {
-          ent.gun.visible = armed;
-          if (armed) ent.gun.material.color.setHex(wd.color != null ? wd.color : 0x22262e);
-        }
+        ent.setWeapon && ent.setWeapon(ent.wid, this._wdef(ent.wid));
       }
 
-      // 动画（持枪时手臂端枪，空手摆臂）
-      const armed = ent.wid && ent.wid !== 'fists';
-      if (ent.st === 'g' || ent.st === 'v') {
-        const sw = ent.st === 'g' ? Math.sin(this.animPhase) * 0.65 : 0;
-        ent.legL.rotation.x = sw;
-        ent.legR.rotation.x = -sw;
-        if (armed) {
-          ent.armL.rotation.x = -1.05;
-          ent.armR.rotation.x = -1.3;
-        } else {
-          ent.armL.rotation.x = -sw * 0.7;
-          ent.armR.rotation.x = sw * 0.4;
-        }
-        ent.group.scale.y = lerp(ent.group.scale.y, ent.cr ? 0.72 : 1, dt * 10);
-      } else {
-        ent.legL.rotation.x = 0.5; ent.legR.rotation.x = -0.3;
-        ent.armL.rotation.x = -2.6; ent.armR.rotation.x = -2.8;
-        ent.group.scale.y = 1;
+      // 动画：近处逐帧驱动，远处冻结省性能
+      if (dist < 160) {
+        const spd = ent._spd || 0;
+        ent.updateAnim(dt, { st: ent.st, moving: spd > 0.4, sprint: spd > 7, crouch: ent.cr, wid: ent.wid });
       }
-      ent.chute.visible = ent.st === 'c';
-      ent.group.visible = ent.group.visible && ent.st !== 'p';
+      if (ent.group.visible) ent.group.visible = ent.st !== 'p';
     }
     // 空投烟柱缓慢旋转
     for (const c of this.crates.values()) {
@@ -1832,6 +1981,7 @@ export class Game {
     this.water.position.x = Math.sin(now / 9000) * 3;
     this.water.material.opacity = 0.84 + Math.sin(now / 2200) * 0.03;
     if (this.clouds) this.clouds.rotation.y += dt * 0.004;
+    if (this.planeMesh && this.planeMesh.visible && this.planeMesh.userData.mixer) this.planeMesh.userData.mixer.update(dt);
   }
 
   _updateCamera(dt) {
@@ -1893,10 +2043,10 @@ export class Game {
   }
 
   _updateViewModel(dt) {
-    // 第一人称视角模型：完整枪模 + 双手；空手时显示拳头
+    // 第一人称视角模型：真实枪模 + 双手；空手时显示拳头
     if (!this.vmGroup) {
       const g = new THREE.Group();
-      // 枪组件
+      // 枪组件（真枪 GLB 或方块兜底）
       const gunParts = new THREE.Group();
       const gm = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.15, 0.6), gm);
@@ -1940,19 +2090,44 @@ export class Game {
       this.vmHandL = handL;
       this.vmHandR = handR;
       this.vmFlash = flash;
+      this._vmWid = undefined;
     }
     const w = this._curWeapon();
     const armed = w.type !== 'melee';
     this.vmGroup.visible = this.fp && this.self.st === 'g';
-    this.vmGunParts.visible = armed;
     this.vmFists.visible = this.fp && !armed;
-    this.vmHandL.visible = this.vmHandR.visible = this.fp && armed;
-    if (armed) {
-      const len = w.type === 'sniper' ? 1.35 : w.type === 'dmr' ? 1.15 : w.type === 'pistol' ? 0.55 : w.type === 'shotgun' ? 1.1 : 0.9;
-      this.vmGunParts.scale.set(1, 1, len);
-      const c = w.color != null ? w.color : 0x2a2f38;
-      this.vmGunParts.children[0].material.color.setHex(c);
+    // 真枪模型自带完整造型，不显示程序化方块手臂；仅方块枪兜底时保留双手
+    this.vmHandL.visible = this.vmHandR.visible = this.fp && armed && !this._vmRealGun;
+
+    // 换枪：真枪 GLB 替换方块枪（相机看向 -Z，枪模 +Z 朝前需转 180°）
+    const wid = armed ? w.id : 'fists';
+    if (wid !== this._vmWid || Assets.ready !== this._vmAssetsReady) {
+      this._vmWid = wid;
+      this._vmAssetsReady = Assets.ready;
+      for (let i = this.vmGunParts.children.length - 1; i >= 0; i--) this.vmGunParts.remove(this.vmGunParts.children[i]);
+      const def = WEAPON_DEFS[wid];
+      const real = def && Assets.ready ? makeWeapon(wid) : null;
+      if (real) {
+        real.rotation.y = Math.PI;
+        real.position.set(0, 0.02, 0.05);
+        this.vmGunParts.add(real);
+        this._vmGunLen = def.len;
+        this._vmRealGun = true; // 真枪模型自带造型，不再叠加方块手臂
+      } else if (def) {
+        this._vmRealGun = false;
+        const gm = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
+        const len = def.len;
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, len * 0.6), gm);
+        b.position.set(0, 0, -len * 0.25);
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, len * 0.5), new THREE.MeshLambertMaterial({ color: 0x1c2028 }));
+        bar.position.set(0, 0.03, -len * 0.65);
+        this.vmGunParts.add(b, bar);
+        this._vmGunLen = len;
+      } else this._vmGunLen = 0.9;
+      // 火光挪到枪口
+      if (this.vmFlash) this.vmFlash.position.set(0, 0.03, -0.35 - (this._vmGunLen || 0.9));
     }
+    this.vmGunParts.visible = armed;
     // 开镜时枪口居中；平时右下
     const tx = this.ads ? 0.0 : 0.26;
     const ty = this.ads ? -0.16 : -0.22;
@@ -2221,6 +2396,8 @@ export class Game {
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
     for (const [ev, fn] of this._handlers || []) this.socket.off(ev, fn);
+    if (this.ownMesh && this.ownMesh.dispose) this.ownMesh.dispose();
+    for (const ent of this.ents.values()) if (ent.dispose) ent.dispose();
     document.removeEventListener('mousemove', this._onMouseMove);
     document.removeEventListener('mousedown', this._onMouseDown);
     document.removeEventListener('mouseup', this._onMouseUp);
